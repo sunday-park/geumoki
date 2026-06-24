@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('geumoki', {
   setInteractive: (v) => ipcRenderer.send('set-interactive', v),
   // 금옥이를 잡아 끌 때 창 이동
   dragMove: (dx, dy) => ipcRenderer.send('drag-move', dx, dy),
+  // 화면 끝(벽)에 닿았을 때 수신 (side: -1 왼쪽, +1 오른쪽)
+  onHitEdge: (cb) => ipcRenderer.on('hit-edge', (_e, side) => cb(side)),
   // 우클릭 메뉴 띄우기
   contextMenu: () => ipcRenderer.send('show-context-menu'),
 });

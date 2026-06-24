@@ -108,6 +108,14 @@ function react(state) {
   }
 }
 
+// 화면 끝(벽)에 닿으면 반대 방향으로 돌려보냄 (어슬렁 중일 때만)
+window.geumoki.onHitEdge((side) => {
+  if (!walk) return;
+  const away = -side;  // 벽 반대 방향
+  walk = { phase: 'out', start: now(), dur: 1500, dist: 70 + Math.random() * 50, dir: away, moved: 0, oneway: true };
+  facing = -away;      // 이미지가 왼쪽을 봄 → 이동방향 반대로 flip
+});
+
 window.geumoki.onStatus((data) => {
   if (!data || typeof data.ts !== 'number') return;
   if (data.ts === lastTs) return;
@@ -137,8 +145,10 @@ function stepWalk(t) {
   const sign = walk.phase === 'out' ? walk.dir : -walk.dir;
   if (delta > 0) window.geumoki.dragMove(sign * Math.round(delta), 0);
   if (p >= 1) {
-    if (walk.phase === 'out') { walk.phase = 'pause'; walk.start = t; }
-    else { walk = null; facing = 1; nextWalk = t + 5000 + Math.random() * 7000; }
+    if (walk.phase === 'out') {
+      if (walk.oneway) { walk = null; facing = 1; nextWalk = t + 4000 + Math.random() * 6000; }
+      else { walk.phase = 'pause'; walk.start = t; }
+    } else { walk = null; facing = 1; nextWalk = t + 5000 + Math.random() * 7000; }
   }
   // 걷는 동안만 살짝 뒤뚱(위아래)
   return Math.abs(Math.sin(el * 0.012)) * 1.5;

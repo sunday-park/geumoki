@@ -132,7 +132,16 @@ ipcMain.on('set-interactive', (_e, interactive) => {
 ipcMain.on('drag-move', (_e, dx, dy) => {
   if (win && !win.isDestroyed()) {
     const [x, y] = win.getPosition();
-    win.setPosition(x + dx, y + dy);
+    const b = win.getBounds();
+    const wa = screen.getDisplayMatching(b).workArea;   // 금옥이가 있는 모니터의 작업영역
+    const minX = wa.x;
+    const maxX = wa.x + wa.width - b.width;
+    let nx = x + dx;
+    let hit = 0;
+    if (nx < minX) { nx = minX; hit = -1; }       // 왼쪽 벽
+    else if (nx > maxX) { nx = maxX; hit = 1; }    // 오른쪽 벽
+    win.setPosition(nx, y + dy);
+    if (hit) win.webContents.send('hit-edge', hit);
   }
 });
 
