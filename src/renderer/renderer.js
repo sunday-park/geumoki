@@ -43,7 +43,7 @@ let temp = null;
 
 // 부드러운 어슬렁 이동
 let walk = null;            // { phase, start, dur, dist, dir, moved }
-let nextWalk = now() + 5000 + Math.random() * 7000;
+let nextWalk = now() + 12000 + Math.random() * 14000;
 
 function say(category) {
   const list = MSG[category];
@@ -146,9 +146,9 @@ function stepWalk(t) {
   if (delta > 0) window.geumoki.dragMove(sign * Math.round(delta), 0);
   if (p >= 1) {
     if (walk.phase === 'out') {
-      if (walk.oneway) { walk = null; facing = 1; nextWalk = t + 4000 + Math.random() * 6000; }
+      if (walk.oneway) { walk = null; facing = 1; nextWalk = t + 10000 + Math.random() * 12000; }
       else { walk.phase = 'pause'; walk.start = t; }
-    } else { walk = null; facing = 1; nextWalk = t + 5000 + Math.random() * 7000; }
+    } else { walk = null; facing = 1; nextWalk = t + 12000 + Math.random() * 14000; }
   }
   // 걷는 동안만 살짝 뒤뚱(위아래)
   return Math.abs(Math.sin(el * 0.012)) * 1.5;
