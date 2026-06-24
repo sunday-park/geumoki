@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>금옥이</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      /* 기본은 투명영역 클릭이 뒤로 통과되도록 user-select 끔 */
+      user-select: none;
+      cursor: default;
+    }
+    #stage {
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    /* 말풍선 */
+    #bubble {
+      max-width: 260px;
+      margin-bottom: 6px;
+      transform: translate(-20px, 20px);  /* 금옥이 쪽으로 왼쪽 아래로 */
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.96);
+      color: #2b2f33;
+      font: 13px/1.3 "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      text-align: center;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      position: relative;
+    }
+    #bubble::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -6px;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: rgba(255, 255, 255, 0.96);
+      border-bottom: 0;
+    }
+    #bubble.show { opacity: 1; }
+    /* 금옥이 본체: 부드러운 아이들 애니메이션 재생 (현재 크기에서 15% 축소) */
+    #seal {
+      width: 162px;
+      height: 162px;
+      transform-origin: 50% 92%;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="bubble"></div>
+    <canvas id="seal" width="220" height="220"></canvas>
+  </div>
+  <script src="messages.js"></script>
+  <script src="seal-img.js"></script>
+  <script src="seal.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

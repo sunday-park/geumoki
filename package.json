@@ -1,0 +1,16 @@
+{
+  "name": "geumoki",
+  "version": "1.0.0",
+  "description": "금옥이 — Claude Code 데스크톱 마스코트(회색 물개)",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "install-hooks": "node src/install-hooks.js",
+    "uninstall-hooks": "node src/install-hooks.js --remove"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
