@@ -112,7 +112,7 @@ function react(state) {
 window.geumoki.onHitEdge((side) => {
   if (!walk) return;
   const away = -side;  // 벽 반대 방향
-  walk = { phase: 'out', start: now(), dur: 1500, dist: 70 + Math.random() * 50, dir: away, moved: 0, oneway: true };
+  walk = { phase: 'out', start: now(), dur: 1300, dist: 40 + Math.random() * 25, dir: away, moved: 0, oneway: true };
   facing = -away;      // 이미지가 왼쪽을 봄 → 이동방향 반대로 flip
 });
 
@@ -127,7 +127,7 @@ window.geumoki.onStatus((data) => {
 // ---- 부드러운 어슬렁 이동 ----
 function startWalk(t) {
   const dir = Math.random() < 0.5 ? -1 : 1;
-  walk = { phase: 'out', start: t, dur: 1700, dist: 45 + Math.random() * 40, dir, moved: 0 };
+  walk = { phase: 'out', start: t, dur: 1400, dist: 20 + Math.random() * 22, dir, moved: 0 };
   // 이미지가 왼쪽을 봄 → 왼쪽 이동(dir=-1)은 정방향(scaleX +1), 오른쪽 이동(dir=+1)은 반전(scaleX -1)
   facing = -dir;
 }
