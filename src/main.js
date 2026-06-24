@@ -198,10 +198,25 @@ function watchStatus() {
   setInterval(sendStatus, 1000);
 }
 
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
-  watchStatus();
-});
+// 단일 인스턴스: 이미 금옥이가 켜져 있으면 새로 안 켜고 종료, 기존 금옥이를 보이게 함
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win && !win.isDestroyed()) {
+      hidden = false;
+      win.show();
+      win.showInactive();
+      win.setAlwaysOnTop(true, 'screen-saver');
+    }
+  });
 
-app.on('window-all-closed', () => app.quit());
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+    watchStatus();
+  });
+
+  app.on('window-all-closed', () => app.quit());
+}
