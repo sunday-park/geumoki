@@ -42,6 +42,12 @@ function restY(wa) {
 // 마우스로 잡았을 때 커서와 창의 간격(드래그 중 절대좌표 추적용). null이면 안 잡힌 상태.
 let grabOffset = null;
 
+// 어슬렁(walk) 이동용 '부동소수' 누적 위치. (null=아직 동기화 전)
+// getPosition()은 정수로 반올림돼 돌아오는데, 배율(150% 등) 모니터에선 1px 이동이
+// 반올림에 먹혀 제자리에 머문다. 그래서 실제 창 위치 대신 소수점 위치를 직접 누적한다.
+let wanderX = null;
+let wanderY = null;
+
 // 손에서 놓은 뒤 '중력 낙하' 애니메이션 타이머(없으면 낙하 중 아님)
 let dropTimer = null;
 function cancelDrop() {
@@ -208,11 +214,17 @@ ipcMain.on('drag-move', (_e, dx, dy) => {
   const [x, y] = win.getPosition();
   // 창 크기는 상수(W/H)로 고정해 모니터 매칭/클램프가 DPI 변동에 흔들리지 않게 한다.
   const wa = screen.getDisplayMatching({ x, y, width: W, height: H }).workArea;
-  const c = clampX(x + dx, wa);
+  // 누적값이 실제 창과 크게 어긋났으면(드래그·낙하 등 외부 이동) 실제 위치로 다시 맞춘다.
+  // 어긋남이 작으면(반올림 오차 수준) 누적값을 유지해 소수점 이동이 쌓이게 둔다.
+  if (wanderX === null || Math.abs(wanderX - x) > 2 || Math.abs(wanderY - y) > 2) {
+    wanderX = x; wanderY = y;
+  }
+  const c = clampX(wanderX + dx, wa);
+  wanderX = c.x;
   // 세로: 화면 위쪽(wa.y)부터 평소 쉬는 바닥(restY)까지만 움직이게 가둔다.
   // (위로는 화면 밖으로 안 나가고, 아래로는 작업표시줄 밑으로 안 내려간다)
-  const ny = Math.max(wa.y, Math.min(y + dy, restY(wa)));
-  win.setBounds({ x: c.x, y: ny, width: W, height: H });
+  wanderY = Math.max(wa.y, Math.min(wanderY + dy, restY(wa)));
+  win.setBounds({ x: Math.round(wanderX), y: Math.round(wanderY), width: W, height: H });
   if (c.hit) win.webContents.send('hit-edge', c.hit);
 });
 
