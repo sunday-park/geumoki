@@ -68,7 +68,7 @@ function say(category) {
   }
   bubbleEl.textContent = text.replace(/\{kw\}/g, lastKeyword).trim();
   bubbleEl.classList.add('show');
-  bubbleUntil = now() + 4200;
+  bubbleUntil = now() + 5500;   // 말풍선 지속시간(조금 늘림)
 }
 
 function react(state) {
@@ -128,7 +128,7 @@ window.geumoki.onHitEdge((side) => {
 window.geumoki.onLanded((impact) => {
   falling = false;
   if (dragging) return;            // 떨어지는 도중 다시 잡았으면 무시
-  eyesClosedUntil = now() + 1000;  // 땅에 닿은 뒤 1초간 눈 감김 유지
+  eyesClosedUntil = now() + 500;   // 땅에 닿은 뒤 0.5초간 눈 감김 유지
   if (impact >= 6) {               // 충분히 떨어졌을 때만 아파함
     bubbleEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
     bubbleEl.classList.add('show');
@@ -334,8 +334,12 @@ function tick() {
 
   // 작업 중일 때만 꼬리를 조금 더 빠르게 파닥(끝나면 mode가 바뀌어 자동 원속도)
   const tailSpeed = (mode === 'working') ? WORK_TAIL_SPEED : 1;
-  // 떨어지는 동안 + 착지 후 1초간은 눈 감은 프레임(20번)에 고정, 그 외엔 평소처럼 깜빡임
-  const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil);
+  // 눈 감은 프레임(20번) 고정 조건:
+  //  - 떨어지는 동안 + 착지 후 0.5초
+  //  - idle 'zzz...' 말풍선이 떠 있는 동안(자는 표정)
+  // 그 외엔 평소처럼 깜빡임
+  const sleeping = bubbleEl.classList.contains('show') && /zzz/i.test(bubbleEl.textContent);
+  const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil) || sleeping;
   const drawOpts = { expression: expr, action: act, frame, breathe, speed: tailSpeed };
   if (eyesClosed) drawOpts.holdFrame = CLOSED_FRAME;
   drawSeal(ctx, drawOpts);
