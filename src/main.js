@@ -19,6 +19,72 @@ let win = null;
 let tray = null;
 let hidden = false;
 
+// 금옥이 '실제로 보이는 몸통'의 좌/우 여백(창 기준, DIP px).
+// 창은 240px이지만 그림은 그보다 작고 가운데 있어, 창 기준으로 벽을 잡으면
+// 금옥이가 벽에서 한참 떨어져 멈춘다. renderer가 불투명 픽셀을 재서 보내주면
+// 그 값으로 보정해 '몸통'이 벽에 정확히 닿게 한다. (측정 전 기본값 = (240-162)/2)
+let sealPad = { left: 39, right: 39 };
+
+// 창 크기(DIP 고정). 클램프 계산에 getBounds() 대신 이 상수를 쓴다.
+// 배율(DPI)이 다른 모니터를 넘어갈 때 창 크기가 잠깐 흔들려도 좌표가 튀지 않게 하기 위함.
+const W = 240;
+const H = 240;
+
+// 금옥이 바닥면이 작업영역 하단선(작업표시줄 상단)에 닿는 '평소 쉬는' 위치 계산용.
+// (index.html #stage 의 bottom:8px + 작업표시줄에 살짝만 닿게 하는 여백 2px)
+const STAGE_BOTTOM = 8;
+const DROP = 2;
+// 작업영역(wa) 안에서 창 y가 가질 수 있는 최저값(= 평소 쉬는 바닥 위치)
+function restY(wa) {
+  return wa.y + wa.height - H + STAGE_BOTTOM + DROP;
+}
+
+// 마우스로 잡았을 때 커서와 창의 간격(드래그 중 절대좌표 추적용). null이면 안 잡힌 상태.
+let grabOffset = null;
+
+// 손에서 놓은 뒤 '중력 낙하' 애니메이션 타이머(없으면 낙하 중 아님)
+let dropTimer = null;
+function cancelDrop() {
+  if (dropTimer) { clearInterval(dropTimer); dropTimer = null; }
+}
+// 현재 위치에서 바닥(평소 쉬는 위치)까지 중력으로 떨어뜨린다. 착지하면 renderer에 알림.
+function dropToFloor() {
+  cancelDrop();
+  if (!win || win.isDestroyed()) return;
+  const [x, y] = win.getPosition();
+  const wa = screen.getDisplayMatching({ x, y, width: W, height: H }).workArea;
+  const floorY = restY(wa);
+  if (y >= floorY - 1) {                 // 이미 바닥에 있으면 낙하 없이 착지(충격 0)만 통보
+    win.webContents.send('landed', 0);
+    return;
+  }
+  let vy = 0;
+  const G = 1.4;                         // 매 틱 가속도(px) — 클수록 빨리 떨어짐
+  dropTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) { cancelDrop(); return; }
+    const [cx, cy] = win.getPosition();
+    vy += G;
+    const ny = cy + vy;
+    if (ny >= floorY) {                  // 바닥 도달 → 착지
+      win.setBounds({ x: cx, y: floorY, width: W, height: H });
+      cancelDrop();
+      win.webContents.send('landed', Math.round(vy));  // 착지 속도(충격) 전달
+    } else {
+      win.setBounds({ x: cx, y: Math.round(ny), width: W, height: H });
+    }
+  }, 16);
+}
+
+// 보이는 '몸통'이 좌/우 벽(작업영역)에 닿도록 창 X를 제한한다. (창 크기는 항상 상수 W 사용)
+function clampX(nx, wa) {
+  const minX = wa.x - sealPad.left;
+  const maxX = wa.x + wa.width - W + sealPad.right;
+  if (maxX < minX) return { x: wa.x, hit: 0 };   // 안전장치: 범위가 뒤집히면 모니터 안쪽으로
+  if (nx < minX) return { x: minX, hit: -1 };     // 왼쪽 벽
+  if (nx > maxX) return { x: maxX, hit: 1 };       // 오른쪽 벽
+  return { x: nx, hit: 0 };
+}
+
 // 메모지 파일을 읽어 상태 객체로 반환 (없거나 깨졌으면 idle)
 function readStatus() {
   try {
@@ -40,21 +106,16 @@ function sendStatus() {
 function createWindow() {
   const display = screen.getPrimaryDisplay();
   const wa = display.workArea;          // 작업표시줄 제외 영역 {x,y,width,height}
-  const W = 240;
-  const H = 240;
-  const STAGE_BOTTOM = 8;               // index.html #stage 의 bottom:8px (금옥이 바닥 여백)
   // 금옥이 바닥면이 작업영역 하단선(= 작업표시줄 상단 라인)에 정확히 닿도록 창 y 계산
-  const sealBottomY = wa.y + wa.height;
-  const DROP = 2;                      // 작업표시줄 상단 라인에 살짝만 닿게(묻히지 않게)
   const restX = wa.x + wa.width - W - 24;
-  const restY = sealBottomY - H + STAGE_BOTTOM + DROP;
+  const startY = restY(wa);
 
   win = new BrowserWindow({
     width: W,
     height: H,
     // 평소엔 작업표시줄 위 오른쪽, 디버그면 화면 중앙
     x: DEBUG ? Math.floor(wa.x + (wa.width - W) / 2) : restX,
-    y: DEBUG ? Math.floor(wa.y + (wa.height - H) / 2) : restY,
+    y: DEBUG ? Math.floor(wa.y + (wa.height - H) / 2) : startY,
     frame: false,
     transparent: !DEBUG,
     backgroundColor: DEBUG ? '#ffffff' : '#00000000',
@@ -128,22 +189,57 @@ ipcMain.on('set-interactive', (_e, interactive) => {
   }
 });
 
-// renderer → main: 금옥이 드래그로 창 이동
-ipcMain.on('drag-move', (_e, dx, dy) => {
-  if (win && !win.isDestroyed()) {
-    const [x, y] = win.getPosition();
-    const b = win.getBounds();
-    const wa = screen.getDisplayMatching(b).workArea;   // 금옥이가 있는 모니터의 작업영역
-    const minX = wa.x;
-    const maxX = wa.x + wa.width - b.width;
-    let nx = x + dx;
-    let hit = 0;
-    if (nx < minX) { nx = minX; hit = -1; }       // 왼쪽 벽
-    else if (nx > maxX) { nx = maxX; hit = 1; }    // 오른쪽 벽
-    win.setPosition(nx, y + dy);
-    if (hit) win.webContents.send('hit-edge', hit);
+// renderer → main: 금옥이가 보이는 몸통 여백 보고(좌/우 DIP px)
+ipcMain.on('seal-extent', (_e, left, right) => {
+  if (typeof left === 'number' && typeof right === 'number' &&
+      Number.isFinite(left) && Number.isFinite(right)) {
+    // 0~80px로 가둬서 비정상 측정값이 벽 범위를 뒤집지 못하게 한다.
+    sealPad = {
+      left: Math.max(0, Math.min(80, left)),
+      right: Math.max(0, Math.min(80, right)),
+    };
+    if (DEBUG) console.log('[wall] 금옥이 몸통 여백 측정됨:', sealPad);
   }
 });
+
+// renderer → main: 어슬렁(walk) 이동 — 화면 기준 픽셀 델타로 창을 옮긴다(상대 이동).
+ipcMain.on('drag-move', (_e, dx, dy) => {
+  if (!win || win.isDestroyed()) return;
+  const [x, y] = win.getPosition();
+  // 창 크기는 상수(W/H)로 고정해 모니터 매칭/클램프가 DPI 변동에 흔들리지 않게 한다.
+  const wa = screen.getDisplayMatching({ x, y, width: W, height: H }).workArea;
+  const c = clampX(x + dx, wa);
+  // 세로: 화면 위쪽(wa.y)부터 평소 쉬는 바닥(restY)까지만 움직이게 가둔다.
+  // (위로는 화면 밖으로 안 나가고, 아래로는 작업표시줄 밑으로 안 내려간다)
+  const ny = Math.max(wa.y, Math.min(y + dy, restY(wa)));
+  win.setBounds({ x: c.x, y: ny, width: W, height: H });
+  if (c.hit) win.webContents.send('hit-edge', c.hit);
+});
+
+// renderer → main: 마우스로 잡기 시작 — 커서와 창의 간격만 기억한다.
+ipcMain.on('drag-start', () => {
+  if (!win || win.isDestroyed()) return;
+  cancelDrop();                                     // 떨어지는 중이었다면 멈추고 다시 잡힘
+  const c = screen.getCursorScreenPoint();          // OS 커서 절대좌표(DIP)
+  const [wx, wy] = win.getPosition();
+  grabOffset = { x: c.x - wx, y: c.y - wy };
+});
+
+// renderer → main: 잡고 움직이는 중 — 델타 누적이 아니라 '커서 절대좌표'를 따라가
+// 미끄러지지 않고, 배율(DPI)이 다른 멀티모니터를 넘어가도 정확히 추적한다.
+ipcMain.on('drag-follow', () => {
+  if (!win || win.isDestroyed() || !grabOffset) return;
+  const c = screen.getCursorScreenPoint();
+  const wa = screen.getDisplayNearestPoint(c).workArea;  // 커서가 있는 모니터 기준
+  const nx = clampX(c.x - grabOffset.x, wa).x;
+  // 세로도 그 모니터 안에 머물게 해서 화면 밖으로 사라지지 않게 한다.
+  const ny = Math.max(wa.y, Math.min(c.y - grabOffset.y, wa.y + wa.height - H));
+  // setBounds로 크기까지 240×240으로 고정 → DPI 리사이즈가 좌표를 오염시키지 못함.
+  win.setBounds({ x: nx, y: ny, width: W, height: H });
+});
+
+// renderer → main: 손 놓음 → 중력으로 바닥에 떨어뜨림
+ipcMain.on('drag-end', () => { grabOffset = null; dropToFloor(); });
 
 // renderer → main: 금옥이 우클릭 메뉴
 ipcMain.on('show-context-menu', () => {
