@@ -25,7 +25,7 @@
     }
     /* 말풍선 */
     #bubble {
-      max-width: 260px;
+      max-width: 200px;            /* 창(240px) 안에서 안 잘리게 */
       margin-bottom: 6px;
       transform: translate(-20px, 20px);  /* 금옥이 쪽으로 왼쪽 아래로 */
       padding: 6px 10px;
@@ -35,7 +35,9 @@
       border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
       text-align: center;
-      white-space: nowrap;
+      white-space: normal;         /* 길면 여러 줄로 줄바꿈(한 줄 잘림 방지) */
+      word-break: keep-all;        /* 한국어 단어는 단어 단위로 줄바꿈 */
+      overflow-wrap: anywhere;     /* 아주 긴 토큰은 강제 줄바꿈 */
       opacity: 0;
       transition: opacity 0.25s ease;
       position: relative;
