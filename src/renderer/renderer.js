@@ -5,7 +5,7 @@
 // - 마우스로 잡아 옮기기 / 우클릭 메뉴 / 빈 공간 클릭 통과
 
 (function () {
-const { GRID, drawSeal } = window.GEUMOKI_SEAL;
+const { GRID, drawSeal, CLOSED_FRAME } = window.GEUMOKI_SEAL;
 const MSG = window.GEUMOKI_MESSAGES;
 
 const cv = document.getElementById('seal');
@@ -40,6 +40,7 @@ let facing = 1;
 
 let falling = false;        // 손에서 놓여 바닥으로 떨어지는 중(착지 전까지 어슬렁 멈춤)
 let landSquash = null;      // 착지 '퉁' 찌부러짐 효과 { start, dur, amp }
+let eyesClosedUntil = 0;    // 착지 후 이 시각까지 눈 감김 유지(떨어지는 동안엔 falling으로 유지)
 
 // 작업 중(working/workingLong) 꼬리 파닥 속도. 1 = 평소, 1.5 = 1.5배 빠르게.
 // 작업이 끝나면(done/end/idle/waiting) 자동으로 1로 돌아온다.
@@ -50,7 +51,7 @@ let temp = null;
 
 // 부드러운 어슬렁 이동
 let walk = null;            // { phase, start, dur, dist, dir, moved }
-let nextWalk = now() + 5000 + Math.random() * 7000;
+let nextWalk = now() + 2500 + Math.random() * 4000;
 
 function say(category) {
   const list = MSG[category];
@@ -127,6 +128,7 @@ window.geumoki.onHitEdge((side) => {
 window.geumoki.onLanded((impact) => {
   falling = false;
   if (dragging) return;            // 떨어지는 도중 다시 잡았으면 무시
+  eyesClosedUntil = now() + 1000;  // 땅에 닿은 뒤 1초간 눈 감김 유지
   if (impact >= 6) {               // 충분히 떨어졌을 때만 아파함
     bubbleEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
     bubbleEl.classList.add('show');
@@ -151,16 +153,16 @@ function setFacing(hx) {
   if (Math.abs(hx) > 0.2) facing = hx < 0 ? 1 : -1;
 }
 function startWalk(t) {
-  // 작업 중엔 좌우로만. 작업 시작 전/심심할 땐 가끔 위로·대각선으로도 조금씩.
-  const working = (mode === 'working');
-  let ux, uy, dist;
+  // 작업 중이든 아니든 좌우로 어슬렁, 가끔 위·대각선으로도 조금씩.
+  let ux, uy, dist, oneway = false;
   const r = Math.random();
-  if (working || r < 0.5) {
-    // 좌우(평소처럼)
+  if (r < 0.6) {
+    // 좌우 어슬렁: 제자리로 안 돌아오고 그 방향으로 슬슬 흘러간다(벽에 닿으면 반대로).
     const dir = Math.random() < 0.5 ? -1 : 1;
     ux = dir; uy = 0;
-    dist = 20 + Math.random() * 22;
-  } else if (r < 0.82) {
+    dist = 35 + Math.random() * 45;   // 35~80px 정도 이동
+    oneway = true;
+  } else if (r < 0.85) {
     // 대각선(위쪽으로 살짝). 바닥에 쉬고 있으니 '올라갔다 내려오는' 느낌.
     const dir = Math.random() < 0.5 ? -1 : 1;
     ux = dir; uy = -0.7;
@@ -171,7 +173,7 @@ function startWalk(t) {
     ux = 0; uy = -1;
     dist = 14 + Math.random() * 14;
   }
-  walk = { phase: 'out', start: t, dur: 1400, dist, ux, uy, moved: 0 };
+  walk = { phase: 'out', start: t, dur: 1400, dist, ux, uy, moved: 0, oneway };
   setFacing(ux);
 }
 function stepWalk(t) {
@@ -193,9 +195,9 @@ function stepWalk(t) {
   }
   if (p >= 1) {
     if (walk.phase === 'out') {
-      if (walk.oneway) { walk = null; facing = 1; nextWalk = t + 4000 + Math.random() * 6000; }
+      if (walk.oneway) { walk = null; nextWalk = t + 2000 + Math.random() * 3500; }
       else { walk.phase = 'pause'; walk.start = t; }
-    } else { walk = null; facing = 1; nextWalk = t + 5000 + Math.random() * 7000; }
+    } else { walk = null; facing = 1; nextWalk = t + 3000 + Math.random() * 4500; }
   }
   // 걷는 동안만 살짝 뒤뚱(위아래)
   return Math.abs(Math.sin(el * 0.012)) * 1.5;
@@ -332,7 +334,11 @@ function tick() {
 
   // 작업 중일 때만 꼬리를 조금 더 빠르게 파닥(끝나면 mode가 바뀌어 자동 원속도)
   const tailSpeed = (mode === 'working') ? WORK_TAIL_SPEED : 1;
-  drawSeal(ctx, { expression: expr, action: act, frame, breathe, speed: tailSpeed });
+  // 떨어지는 동안 + 착지 후 1초간은 눈 감은 프레임(20번)에 고정, 그 외엔 평소처럼 깜빡임
+  const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil);
+  const drawOpts = { expression: expr, action: act, frame, breathe, speed: tailSpeed };
+  if (eyesClosed) drawOpts.holdFrame = CLOSED_FRAME;
+  drawSeal(ctx, drawOpts);
   // 숨쉬기: 얼굴/몸 전체가 아니라 '지느러미 사이 배 타원'만 아주 살짝 부풀린다
   breatheBelly(breathe);
   // 물방울(잡았다 놓을 때 등)을 seal 위에 덧그림
@@ -434,6 +440,7 @@ window.addEventListener('mousedown', (e) => {
     dragging = true;
     walk = null;        // 잡으면 어슬렁 중단
     falling = false;    // 떨어지는 중 다시 잡힘
+    eyesClosedUntil = 0;// 다시 잡으면 눈 뜸
     landSquash = null;
     document.body.style.cursor = 'grabbing';
     window.geumoki.dragStart();
