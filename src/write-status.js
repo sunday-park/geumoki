@@ -41,24 +41,67 @@ function shorten(s) {
   return one.length > 16 ? one.slice(0, 16) + '…' : one;
 }
 
-function extractKeyword(ev) {
+// 사용자 요청 원문을 그대로 보여주지 않도록, 조사·불용어를 걷어내고
+// 핵심 단어 2~3개만 뽑아 키워드처럼 만든다. (LLM 없이 규칙 기반이라 근사치)
+const STOP = new Set([
+  // 프로젝트 고유어(매번 나와서 노이즈) — 키워드에서 제외
+  '금옥이', '금옥',
+  // 접속/부사/지시어
+  '그리고', '그래서', '근데', '그런데', '하지만', '또', '또한', '그냥', '우선', '우선적으로',
+  '추가로', '좀', '조금', '너무', '정말', '진짜', '약간', '살짝', '막', '지금', '이제', '계속',
+  '다시', '잘', '더', '덜', '이거', '그거', '저거', '이게', '그게', '이걸', '그걸', '여기', '거기',
+  '이런', '그런', '저런', '이렇게', '그렇게',
+  // 일반 동사/어미/의존명사
+  '해', '해줘', '해줘요', '줘', '줘요', '하고', '해서', '하는', '한', '할', '했어', '했는데',
+  '했고', '되', '돼', '될', '된', '수', '있어', '있는', '있게', '없어', '없이', '주고싶긴한데',
+  '안', '못', '내', '너', '나', '우리', '니', '네', '제', '저', '그', '이', '등', '등의',
+  '같은', '같아', '같이', '처럼', '때', '대로', '중', '관련', '바쁘다', '꼼꼼하게', '꼼꼼히',
+  '뭐', '왜', '어디', '어떤', '어떻게', '어디까지', '무슨', '좋겠어', '좋아', '싶어', '봐',
+  '보고', '확인', '부탁', '거', '것', '수도', '인식', '인식하는걸까',
+  // 홀로 떨어진 조사/연결어(기호 제거 과정에서 분리되어 남는 것들)
+  '에서', '으로', '까지', '부터', '한테', '에게', '이랑', '라고', '라는', '위해', '통해', '대해',
+  // 구어체 지시어(노이즈)
+  '얘', '얘가', '걔', '걔가', '쟤', '쟤가', '얘를', '얘네', '걔네',
+]);
+
+// 단어 끝에 붙은 흔한 조사를 떼어낸다(너무 짧아지지 않게 어간 2글자는 보호).
+// 주의: '들'은 단어 일부일 때가 많아(바들바들 등) 떼지 않는다 — 어색한 잘림 방지.
+function stripParticle(w) {
+  return w.replace(/(으로|에서|에게|한테|까지|부터|이랑|와|과|은|는|이|가|을|를|에|의|도|만|로|랑|께)$/u,
+    (m) => ((w.length - m.length) >= 2 ? '' : m));
+}
+
+function keywordsFromPrompt(prompt) {
+  const tokens = String(prompt)
+    .replace(/[^0-9A-Za-z가-힣\s]/g, ' ')   // 기호/문장부호 제거
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(stripParticle)
+    .filter((w) => w && w.length >= 2 && !STOP.has(w));
+  const picked = [];
+  for (const w of tokens) {
+    if (!picked.includes(w)) picked.push(w);
+    if (picked.length >= 2) break;     // '짧은' 요청 키워드 — 최대 2개
+  }
+  return picked.join(' ');
+}
+
+// 도구 사용 이벤트 → '지금 실제로 하는 작업' 키워드 (예: renderer.js 수정, npm 설치)
+function toolKeyword(ev) {
   if (!ev || typeof ev !== 'object') return '';
   const tool = ev.tool_name;
-  if (tool) {
-    const ti = ev.tool_input || {};
-    if (tool === 'Bash') {
-      const cmd = String(ti.command || '').trim();
-      if (!cmd) return '명령 실행';
-      // 명령 앞 두 토큰만 한국어로 (예: "npm install" → "npm 설치")
-      return cmd.split(/\s+/).slice(0, 2).map(koreanizeWord).join(' ');
-    }
-    const fp = ti.file_path || ti.path || ti.notebook_path || ti.pattern || '';
-    const base = fp ? String(fp).split(/[\\/]/).pop() : '';
-    const act = TOOL[tool] || koreanizeWord(tool);
-    return base ? `${base} ${act}` : act;
+  if (!tool) return '';
+  const ti = ev.tool_input || {};
+  if (tool === 'Bash') {
+    const cmd = String(ti.command || '').trim();
+    if (!cmd) return '명령 실행';
+    // 명령 앞 두 토큰만 한국어로 (예: "npm install" → "npm 설치")
+    return cmd.split(/\s+/).slice(0, 2).map(koreanizeWord).join(' ');
   }
-  if (ev.prompt) return shorten(ev.prompt); // 사용자가 보낸 요청 요약
-  return '';
+  const fp = ti.file_path || ti.path || ti.notebook_path || ti.pattern || '';
+  const base = fp ? String(fp).split(/[\\/]/).pop() : '';
+  const act = TOOL[tool] || koreanizeWord(tool);
+  return base ? `${base} ${act}` : act;
 }
 
 const state = (process.argv[2] || 'idle').trim();
@@ -69,19 +112,43 @@ function finish() {
   if (finished) return;
   finished = true;
 
-  let keyword = '';
+  const dir = path.join(os.homedir(), '.claude', 'geumoki');
+  const file = path.join(dir, 'status.json');
+
+  // 직전 '요청 키워드(req)'를 이어받는다. 도구 이벤트가 연달아 와도
+  // 요청 맥락은 유지하면서 '지금 하는 작업(tool)'만 갱신하기 위함.
+  let req = '', tool = '';
+  try {
+    const prev = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (prev && typeof prev.req === 'string') req = prev.req;
+  } catch {
+    // 기존 파일 없음/깨짐 — req 없이 진행
+  }
+
   try {
     const clean = raw.replace(/^﻿/, '').trim(); // 혹시 모를 BOM 제거
-    if (clean) keyword = extractKeyword(JSON.parse(clean));
+    if (clean) {
+      const ev = JSON.parse(clean);
+      if (ev && ev.prompt) {           // 새 사용자 요청 → 요청 키워드 갱신, 작업 초기화
+        req = keywordsFromPrompt(ev.prompt);
+        tool = '';
+      } else {                          // 도구 사용 → 작업만 갱신, 요청 키워드는 유지
+        tool = toolKeyword(ev);
+      }
+    }
   } catch {
     // 파싱 실패 — 키워드 없이 진행
   }
 
+  // 세션이 새로 시작되면 직전 세션의 요청 맥락은 비운다.
+  if (state === 'start') { req = ''; tool = ''; }
+
+  // 짧은 요청 키워드 + 실제 작업 중인 것을 섞어서 표시
+  const keyword = (req && tool) ? `${req} · ${tool}` : (req || tool || '');
+
   try {
-    const dir = path.join(os.homedir(), '.claude', 'geumoki');
-    const file = path.join(dir, 'status.json');
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ state, ts: Date.now(), keyword }), 'utf8');
+    fs.writeFileSync(file, JSON.stringify({ state, ts: Date.now(), keyword, req, tool }), 'utf8');
   } catch {
     // 무시 — 금옥이 때문에 Claude Code가 멈추는 일은 없어야 한다
   }
