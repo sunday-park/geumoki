@@ -334,8 +334,22 @@ let followMode = false;
 let followTimer = null;
 let followDir = 0, followMoving = false;   // renderer 에 보낸 마지막 상태(바뀔 때만 전송)
 let followX = null, followY = null;        // 부동소수 누적 위치(1px 미만 속도 손실 방지)
-const FOLLOW_SPEED = 0.7;     // 한 틱(16ms)에 기어오는 px — 느릿느릿(0.7≈초속 44px)
 const FOLLOW_DEADZONE = 10;   // (도달 가능한)목표와 이보다 가까우면 멈춤·평소 상태로
+// 물개가 지느러미로 몸을 끄는 느낌: '슥' 두 번 밀고 → 쉬고 → 반복.
+let gaitT = 0;                // 걸음새 시계(ms, 한 사이클 안에서 순환)
+const SCOOT_MS = 280;    // 한 번 '슥' 미는 시간
+const SCOOT_GAP = 90;    // 두 슥 사이 짧은 텀
+const SCOOT_PEAK = 2.4;  // 슥 미는 순간 최고 속도(px/틱) — 빠르게 슥, 끝에서 0으로 감속
+const REST_MS = 600;     // 2번 슥 후 쉬는 시간
+const GAIT_CYCLE = 2 * SCOOT_MS + SCOOT_GAP + REST_MS;
+// 사이클 내 시각(gt)에서의 미는 속도. 두 '슥' 구간만 sin 으로 솟았다 꺼지고 나머진 0.
+function gaitVelocity(gt) {
+  if (gt < SCOOT_MS) return SCOOT_PEAK * Math.sin(Math.PI * (gt / SCOOT_MS));
+  if (gt < SCOOT_MS + SCOOT_GAP) return 0;            // 두 슥 사이 잠깐
+  const g2 = gt - SCOOT_MS - SCOOT_GAP;
+  if (g2 < SCOOT_MS) return SCOOT_PEAK * Math.sin(Math.PI * (g2 / SCOOT_MS));
+  return 0;                                            // 쉬는 구간
+}
 
 function setFollow(v) {
   followMode = v;
@@ -343,6 +357,7 @@ function setFollow(v) {
   if (followTimer) { clearInterval(followTimer); followTimer = null; }
   followDir = 0; followMoving = false;
   followX = null; followY = null;          // 다음 스텝에서 현재 창 위치로 다시 맞춤
+  gaitT = 0;                               // 걸음새 처음('슥')부터 시작
   if (v) followTimer = setInterval(followStep, 16);
 }
 
@@ -353,29 +368,35 @@ function followStep() {
   const [wx, wy] = win.getPosition();
   const wa = screen.getDisplayNearestPoint(c).workArea;
   // 누적 위치가 실제 창과 크게 어긋났으면(드래그·낙하 등 외부 이동) 실제 위치로 재동기화.
-  // getPosition()은 정수라, 매 틱 여기서 다시 읽으면 0.7px 같은 소수 이동이 반올림에
-  // 먹혀 사라진다 → followX/Y 에 소수째 누적하고 창엔 반올림해서만 반영한다.
+  // getPosition()은 정수라, 매 틱 다시 읽으면 소수 이동이 반올림에 먹혀 사라진다
+  // → followX/Y 에 소수째 누적하고 창엔 반올림해서만 반영한다.
   if (followX === null || Math.abs(followX - wx) > 2 || Math.abs(followY - wy) > 2) {
     followX = wx; followY = wy;
   }
   // 목표 창 좌상단(커서가 몸통 가운데에 오도록). 단, '도달 가능한' 위치로 먼저 가둔다.
   //  - 가로: 몸통이 좌우 벽을 넘지 않게(clampX)
   //  - 세로: 화면 위쪽 ~ 평소 쉬는 바닥 사이(작업표시줄 밑으론 안 내려감)
-  // 도달 불가능한 원래 커서까지의 거리로 판단하면, 커서가 화면 아래쪽일 때
-  // 세로 거리가 영영 안 줄어 "계속 걷고 + 가로 이동이 느려지는" 문제가 생긴다.
   const tx = clampX(c.x - W / 2, wa).x;
   const ty = Math.max(wa.y, Math.min(c.y - H / 2, restY(wa)));
   const dx = tx - followX;
   const dy = ty - followY;
   const dist = Math.hypot(dx, dy);
-  const moving = dist > FOLLOW_DEADZONE;
-  let dir = 0;
-  if (moving) {
-    const step = Math.min(FOLLOW_SPEED, dist);
-    followX += (dx / dist) * step;
-    followY += (dy / dist) * step;
-    win.setBounds({ x: Math.round(followX), y: Math.round(followY), width: W, height: H });
-    if (Math.abs(dx) > 0.5) dir = dx < 0 ? -1 : 1;
+  let dir = 0, moving = false;
+  if (dist > FOLLOW_DEADZONE) {
+    // 걸음새 진행: 슥 구간엔 밀고(moving), 쉬는 구간엔 가만히.
+    gaitT += 16;
+    if (gaitT >= GAIT_CYCLE) gaitT -= GAIT_CYCLE;
+    const v = gaitVelocity(gaitT);
+    if (v > 0) {
+      const step = Math.min(v, dist);
+      followX += (dx / dist) * step;
+      followY += (dy / dist) * step;
+      win.setBounds({ x: Math.round(followX), y: Math.round(followY), width: W, height: H });
+      moving = true;
+      if (Math.abs(dx) > 0.5) dir = dx < 0 ? -1 : 1;
+    }
+  } else {
+    gaitT = 0;   // 도착하면 다음엔 '슥'부터 다시 시작
   }
   // 방향/이동상태가 바뀔 때만 renderer 로 알림(매 프레임 IPC 도배 방지)
   if (dir !== followDir || moving !== followMoving) {
