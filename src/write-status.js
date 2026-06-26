@@ -82,6 +82,14 @@ function stripParticle(w) {
     (m) => ((w.length - m.length) >= 2 ? '' : m));
 }
 
+// Claude Code가 자동으로 끼워넣는 '합성 프롬프트'(사용자가 친 게 아님)는 키워드로 쓰지 않는다.
+// 예: 백그라운드 작업 완료 알림(<task-notification>), 슬래시 커맨드, 시스템 리마인더 등.
+// 이런 걸 키워드로 뽑으면 "task notification" 같은 게 박혀 작업 맥락을 덮어버린다.
+const SYNTHETIC_RE = /task[-_ ]?notification|system-reminder|local-command|command-(name|message|args)|<\/?command/i;
+function isSyntheticPrompt(p) {
+  return SYNTHETIC_RE.test(String(p));
+}
+
 function keywordsFromPrompt(prompt) {
   const tokens = String(prompt)
     .replace(/[^0-9A-Za-z가-힣\s]/g, ' ')   // 기호/문장부호 제거
@@ -160,10 +168,13 @@ function finish() {
     const clean = raw.replace(/^﻿/, '').trim(); // 혹시 모를 BOM 제거
     if (clean) {
       const ev = JSON.parse(clean);
-      if (ev && ev.prompt) {           // 새 사용자 요청 → 요청 키워드 갱신, 작업 초기화
-        req = keywordsFromPrompt(ev.prompt);
-        tool = '';
-      } else {                          // 도구 사용 → 작업만 갱신, 요청 키워드는 유지
+      if (ev && ev.prompt) {           // 사용자 프롬프트
+        if (!isSyntheticPrompt(ev.prompt)) {  // 시스템 합성 프롬프트(task-notification 등)는 무시
+          req = keywordsFromPrompt(ev.prompt); // 실제 요청만 키워드 갱신, 작업 초기화
+          tool = '';
+        }
+        // 합성 프롬프트면 직전 실제 요청 맥락(req)을 그대로 유지
+      } else if (ev) {                  // 도구 사용 → 작업만 갱신, 요청 키워드는 유지
         tool = toolKeyword(ev);
       }
     }
@@ -203,4 +214,4 @@ try {
 if (require.main === module) runCli();
 
 // 키워드 추출 규칙을 테스트에서 검증할 수 있게 순수 함수만 내보낸다.
-module.exports = { keywordsFromPrompt, bashKeyword, toolKeyword, koreanizeWord };
+module.exports = { keywordsFromPrompt, bashKeyword, toolKeyword, koreanizeWord, isSyntheticPrompt };
