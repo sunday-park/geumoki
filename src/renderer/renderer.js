@@ -69,8 +69,8 @@ let pointerSeen = 0;                   // 그 시각(잠깐 안 보이면 방향
 // 잡고 좌우로 여러 번 흔들면 '어지러움' — 눈 질끈 감고 우웩, 머리 위에 큰 💫.
 let dizzyUntil = 0;                    // 이 시각까지 어지러운 상태
 let shakeDir = 0, shakeExtreme = null, shakePeak = null, shakeCount = 0, shakeLastRev = 0;
-const SHAKE_SWING = 22;    // 한 번 '흔듦'으로 칠 최소 스윙 폭(정점~정점 px) — 작은 떨림 무시
-const SHAKE_BACKOFF = 6;   // 정점에서 이만큼 되돌아와야 '방향이 꺾였다'고 본다(디바운스)
+const SHAKE_SWING = 40;    // 한 번 '흔듦'으로 칠 최소 스윙 폭(정점~정점 px) — 작은 떨림·오버슈트 무시
+const SHAKE_BACKOFF = 12;  // 정점에서 이만큼 되돌아와야 '방향이 꺾였다'고 본다(디바운스, 잔떨림 무시)
 const SHAKE_NEEDED = 4;    // 좌우로 이만큼 꺾으면(=흔들면) 어지러워함
 const SHAKE_WINDOW = 700;  // 꺾임 간격이 이보다 뜸하면 카운트 리셋(ms)
 const DIZZY_DUR = 2200;    // 어지러움 지속(ms)
@@ -616,7 +616,9 @@ window.addEventListener('mousemove', (e) => {
   pointerX = e.clientX; pointerY = e.clientY; pointerSeen = now();  // 커서 쳐다보기용
   if (dragging) {
     window.geumoki.dragFollow();   // 메인이 OS 커서 절대좌표로 따라옴(미끄러짐 없음)
-    trackShake(e.clientX, now());  // 좌우로 마구 흔들면 → 어지러움
+    // 흔들기 감지는 '화면 절대좌표(screenX)'로 — clientX는 창이 커서를 따라오며
+    // 한 박자 늦게 따라잡아 가짜 좌우 진동이 생겨, 그냥 옮기기만 해도 흔든 걸로 오인됨.
+    trackShake(e.screenX, now());  // 좌우로 마구 흔들면 → 어지러움
     return;
   }
   const over = overSeal(e.clientX, e.clientY);
