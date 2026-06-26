@@ -132,7 +132,7 @@ window.geumoki.onHitEdge((side) => {
 
 // 손에서 놓여 중력으로 떨어진 뒤 바닥에 '퉁' 닿았을 때(무거운 물개라 통통통 몇 번 튕김)
 // bounce: 0 = 처음 큰 충격, 1+ = 잔여 통통 튕김
-const HURT_IMPACT = 20;          // 이 속도 이상으로 떨어졌을 때만 아파함(낮게 떨구면 안 아픔). ~143px 이상
+const HURT_IMPACT = 24;          // 이 속도 이상으로 떨어졌을 때만 아파함(낮게 떨구면 안 아픔). ~206px 이상
 window.geumoki.onLanded((impact, bounce) => {
   if (bounce === 0) falling = false;   // 첫 접촉부터 어슬렁 재개(튕기는 잔동작은 squash로만 표현)
   if (dragging) return;            // 떨어지는 도중 다시 잡았으면 무시
