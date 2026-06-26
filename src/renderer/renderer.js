@@ -427,6 +427,14 @@ function tick() {
   // 변형: 방향 + 착지 찌부러짐 + 뒤뚱 (숨쉬기는 위 배 타원에서 처리)
   let tf = `scaleX(${(facing * sx).toFixed(4)}) scaleY(${sy.toFixed(4)})`;
   if (bob) tf += ` translateY(${(-bob).toFixed(2)}px)`;
+  // 쓰다듬을 때 몸을 잔잔하게 떪 — 핸드폰 진동처럼 빠르지 않게(저주파 ~3Hz),
+  // 느린 엔벨로프로 떨림 세기가 완만히 출렁여 자연스러운 '부르르~' 느낌
+  if (petting) {
+    const env = 0.55 + 0.45 * Math.sin(t * 0.005);     // ~1.3초 주기로 세기 출렁
+    const trX = Math.sin(t * 0.02) * 0.7 * env;        // 가로 ~3.2Hz
+    const trY = Math.sin(t * 0.016 + 1.1) * 0.5 * env; // 세로 ~2.5Hz
+    tf += ` translate(${trX.toFixed(2)}px, ${trY.toFixed(2)}px)`;
+  }
   cv.style.transform = tf;
 
   requestAnimationFrame(tick);
