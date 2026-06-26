@@ -333,8 +333,8 @@ function toggleHidden() {
 let followMode = false;
 let followTimer = null;
 let followDir = 0, followMoving = false;   // renderer 에 보낸 마지막 상태(바뀔 때만 전송)
-const FOLLOW_SPEED = 1.2;     // 한 틱(16ms)에 기어오는 px — 느릿느릿
-const FOLLOW_DEADZONE = 12;   // 커서와 이보다 가까우면 멈춤(덜덜거림 방지)
+const FOLLOW_SPEED = 0.7;     // 한 틱(16ms)에 기어오는 px — 느릿느릿
+const FOLLOW_DEADZONE = 10;   // (도달 가능한)목표와 이보다 가까우면 멈춤·평소 상태로
 
 function setFollow(v) {
   followMode = v;
@@ -350,17 +350,22 @@ function followStep() {
   const c = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
   const wa = screen.getDisplayNearestPoint(c).workArea;
-  // 금옥이 몸통(창 가운데)이 커서에 닿도록 목표 좌상단 = 커서 - 창중심
-  const dx = (c.x - W / 2) - wx;
-  const dy = (c.y - H / 2) - wy;
+  // 목표 창 좌상단(커서가 몸통 가운데에 오도록). 단, '도달 가능한' 위치로 먼저 가둔다.
+  //  - 가로: 몸통이 좌우 벽을 넘지 않게(clampX)
+  //  - 세로: 화면 위쪽 ~ 평소 쉬는 바닥 사이(작업표시줄 밑으론 안 내려감)
+  // 도달 불가능한 원래 커서까지의 거리로 판단하면, 커서가 화면 아래쪽일 때
+  // 세로 거리가 영영 안 줄어 "계속 걷고 + 가로 이동이 느려지는" 문제가 생긴다.
+  const tx = clampX(c.x - W / 2, wa).x;
+  const ty = Math.max(wa.y, Math.min(c.y - H / 2, restY(wa)));
+  const dx = tx - wx;
+  const dy = ty - wy;
   const dist = Math.hypot(dx, dy);
   const moving = dist > FOLLOW_DEADZONE;
   let dir = 0;
   if (moving) {
     const step = Math.min(FOLLOW_SPEED, dist);
-    const nx = clampX(wx + (dx / dist) * step, wa).x;
-    // 세로는 화면 위쪽~평소 쉬는 바닥 사이로 가둔다(작업표시줄 밑으론 안 내려감)
-    const ny = Math.max(wa.y, Math.min(wy + (dy / dist) * step, restY(wa)));
+    const nx = wx + (dx / dist) * step;
+    const ny = wy + (dy / dist) * step;
     win.setBounds({ x: Math.round(nx), y: Math.round(ny), width: W, height: H });
     if (Math.abs(dx) > 0.5) dir = dx < 0 ? -1 : 1;
   }
