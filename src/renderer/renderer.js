@@ -51,7 +51,7 @@ let temp = null;
 
 // 부드러운 어슬렁 이동
 let walk = null;            // { phase, start, dur, dist, dir, moved }
-let nextWalk = now() + 2500 + Math.random() * 4000;
+let nextWalk = now() + 1800 + Math.random() * 2600;
 
 function say(category) {
   const list = MSG[category];
@@ -120,7 +120,7 @@ function react(state) {
 window.geumoki.onHitEdge((side) => {
   if (!walk) return;
   const away = -side;  // 벽 반대 방향
-  walk = { phase: 'out', start: now(), dur: 1300, dist: 40 + Math.random() * 25, ux: away, uy: 0, moved: 0, oneway: true };
+  walk = { phase: 'out', start: now(), dur: 2900, dist: 65 + Math.random() * 45, ux: away, uy: 0, moved: 0, oneway: true };
   setFacing(away);     // 이미지가 왼쪽을 봄 → 이동방향 반대로 flip
 });
 
@@ -160,44 +160,47 @@ function startWalk(t) {
     // 좌우 어슬렁: 제자리로 안 돌아오고 그 방향으로 슬슬 흘러간다(벽에 닿으면 반대로).
     const dir = Math.random() < 0.5 ? -1 : 1;
     ux = dir; uy = 0;
-    dist = 35 + Math.random() * 45;   // 35~80px 정도 이동
+    dist = 65 + Math.random() * 78;   // 65~143px 정도 이동
     oneway = true;
   } else if (r < 0.85) {
     // 대각선(위쪽으로 살짝). 바닥에 쉬고 있으니 '올라갔다 내려오는' 느낌.
     const dir = Math.random() < 0.5 ? -1 : 1;
     ux = dir; uy = -0.7;
     const m = Math.hypot(ux, uy); ux /= m; uy /= m;
-    dist = 18 + Math.random() * 18;
+    dist = 34 + Math.random() * 31;
   } else {
     // 위아래(곧장 위로 떴다가 제자리로)
     ux = 0; uy = -1;
-    dist = 14 + Math.random() * 14;
+    dist = 26 + Math.random() * 23;
   }
-  walk = { phase: 'out', start: t, dur: 1400, dist, ux, uy, moved: 0, oneway };
+  walk = { phase: 'out', start: t, dur: 3000, dist, ux, uy, moved: 0, oneway };
   setFacing(ux);
 }
 function stepWalk(t) {
   if (!walk) return 0;
   const el = t - walk.start;
   if (walk.phase === 'pause') {
-    if (el > 900) { walk.phase = 'back'; walk.start = t; walk.moved = 0; setFacing(-walk.ux); }
+    if (el > 900) { walk.phase = 'back'; walk.start = t; walk.sx = 0; walk.sy = 0; setFacing(-walk.ux); }
     return 0;
   }
   const p = clamp(el / walk.dur, 0, 1);
   const target = walk.dist * smooth(p);
-  const delta = target - walk.moved;
-  walk.moved = target;
   const sign = walk.phase === 'out' ? 1 : -1;
-  if (delta > 0) {
-    const dx = Math.round(sign * delta * walk.ux);
-    const dy = Math.round(sign * delta * walk.uy);
-    if (dx || dy) window.geumoki.dragMove(dx, dy);
+  // 프레임 증분을 따로 반올림하면 0.5px 미만이 전부 0으로 사라진다(60fps에서 거의 멈춤).
+  // 대신 "지금까지 가야 할 누적 정수 위치 − 이미 보낸 정수"를 보내 손실 없이 누적한다.
+  const wantX = Math.round(sign * target * walk.ux);
+  const wantY = Math.round(sign * target * walk.uy);
+  const dx = wantX - (walk.sx || 0);
+  const dy = wantY - (walk.sy || 0);
+  if (dx || dy) {
+    window.geumoki.dragMove(dx, dy);
+    walk.sx = wantX; walk.sy = wantY;
   }
   if (p >= 1) {
     if (walk.phase === 'out') {
-      if (walk.oneway) { walk = null; nextWalk = t + 2000 + Math.random() * 3500; }
+      if (walk.oneway) { walk = null; nextWalk = t + 1600 + Math.random() * 2400; }
       else { walk.phase = 'pause'; walk.start = t; }
-    } else { walk = null; facing = 1; nextWalk = t + 3000 + Math.random() * 4500; }
+    } else { walk = null; facing = 1; nextWalk = t + 2200 + Math.random() * 3000; }
   }
   // 걷는 동안만 살짝 뒤뚱(위아래)
   return Math.abs(Math.sin(el * 0.012)) * 1.5;

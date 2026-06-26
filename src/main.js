@@ -135,6 +135,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 데스크톱 펫은 포커스를 안 가져서 Chromium이 백그라운드 창으로 보고
+      // requestAnimationFrame을 ~1fps로 throttle한다. 그러면 어슬렁 애니메이션이
+      // 거의 멈춰 보이므로, throttling을 꺼서 항상 풀 프레임으로 돌게 한다.
+      backgroundThrottling: false,
     },
   });
 
