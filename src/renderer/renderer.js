@@ -405,11 +405,14 @@ function tick() {
   // 그 외엔 평소처럼 깜빡임
   const sleeping = bubbleEl.classList.contains('show') && /zzz/i.test(bubbleEl.textContent);
   const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil) || sleeping || petting;
-  const drawOpts = { expression: expr, action: act, frame, breathe, speed: tailSpeed };
+  // 자는(zzz) 동안에는 프레임 고정(꼬리 살랑 정지)뿐 아니라 배 숨쉬기 출렁임도 멈춰
+  // 완전히 가만히 잔다 — 자는 대사가 사라지면 다시 평소처럼 살랑·숨쉬기 복귀.
+  const breatheNow = sleeping ? 0 : breathe;
+  const drawOpts = { expression: expr, action: act, frame, breathe: breatheNow, speed: tailSpeed };
   if (eyesClosed) drawOpts.holdFrame = CLOSED_FRAME;
   drawSeal(ctx, drawOpts);
   // 숨쉬기: 얼굴/몸 전체가 아니라 '지느러미 사이 배 타원'만 아주 살짝 부풀린다
-  breatheBelly(breathe);
+  breatheBelly(breatheNow);
   // 물방울(잡았다 놓을 때 등)을 seal 위에 덧그림
   drawDrops(t);
   // 쓰다듬을 때 머리 위로 떠오르는 하트
