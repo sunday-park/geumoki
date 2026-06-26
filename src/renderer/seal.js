@@ -1,7 +1,7 @@
 // 금옥이 = 사용자 원본 그림 기반 '부드러운' 아이들 애니메이션(스프라이트시트) 재생.
 // 시트/메타는 seal-img.js: window.GEUMOKI_SHEET(dataURI), window.GEUMOKI_SHEET_META.
 // 24프레임을 ~125ms마다 → 배 양옆 부풀기 + 꼬리 흔들기 + 3초마다 깜빡임이 구워져 있음.
-// drawSeal(ctx, opts) 인터페이스 유지(opts 미사용 — 추후 확장).
+// drawSeal(ctx, opts): opts.speed(재생 속도)·opts.holdFrame(프레임 고정)만 사용.
 
 (function () {
 const M = window.GEUMOKI_SHEET_META || { frames: 24, fw: 220, fh: 134, ms: 125 };
