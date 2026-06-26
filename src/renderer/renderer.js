@@ -199,8 +199,8 @@ function stepWalk(t) {
 // ---- 복부(지느러미 사이 타원)만 숨쉬기 ----
 // 얼굴/몸 전체를 키우지 않고, 배 타원 영역만 아주 살짝 확대해 다시 덮는다.
 // 타원 가장자리는 부드럽게(feather) 처리해 주변 몸과 자연스럽게 이어진다.
-const BELLY = { cx: 112, cy: 120 + 68, rx: 28, ry: 16 }; // 캔버스 내부좌표(프레임 dy=68 반영)
-const BELLY_AMP = 0.18;   // 배 부푸는 세기(타원만, 0.18 = 최대 18%). 여기서 조절
+const BELLY = { cx: 52, cy: 205, rx: 28, ry: 16 }; // 캔버스 내부좌표(프레임 dy=68 반영). cx 작을수록 왼쪽, cy 클수록 아래
+const BELLY_AMP = 0.14;   // 배 부푸는 세기(타원만, 0.14 = 최대 14%). 여기서 조절
 const bo = document.createElement('canvas');
 const boctx = bo.getContext('2d');
 
@@ -209,7 +209,7 @@ function breatheBelly(breathe) {
   if (bump <= 0.002) return;
   const s = 1 + bump * BELLY_AMP;
   const { cx, cy, rx, ry } = BELLY;
-  const pad = 5;
+  const pad = 8;            // feather가 번질 바깥 여백(클수록 가장자리 더 부드럽게)
   const RX = rx + pad, RY = ry + pad;
   const bw = Math.ceil(RX * 2), bh = Math.ceil(RY * 2);
   bo.width = bw; bo.height = bh;
@@ -217,14 +217,15 @@ function breatheBelly(breathe) {
   // 1) 캔버스의 배 영역을 중심 기준 s배 확대해서 오프스크린에 (src를 1/s로 잡으면 확대되어 보임)
   const sw = bw / s, sh = bh / s;
   boctx.drawImage(cv, cx - sw / 2, cy - sh / 2, sw, sh, 0, 0, bw, bh);
-  // 2) 타원 가장자리 부드럽게 — 가운데만 남기고 바깥은 알파 0
+  // 2) 타원 가장자리 부드럽게(feather) — 가운데만 또렷, 바깥으로 길게 알파를 흘려 자연스레 사라짐
   boctx.globalCompositeOperation = 'destination-in';
   boctx.save();
   boctx.translate(bw / 2, bh / 2);
   boctx.scale(RX, RY);
-  const g = boctx.createRadialGradient(0, 0, 0.45, 0, 0, 1);
+  const g = boctx.createRadialGradient(0, 0, 0.15, 0, 0, 1);
   g.addColorStop(0, 'rgba(0,0,0,1)');
-  g.addColorStop(0.7, 'rgba(0,0,0,1)');
+  g.addColorStop(0.4, 'rgba(0,0,0,1)');
+  g.addColorStop(0.7, 'rgba(0,0,0,0.45)');
   g.addColorStop(1, 'rgba(0,0,0,0)');
   boctx.fillStyle = g;
   boctx.beginPath();
