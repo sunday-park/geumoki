@@ -338,16 +338,21 @@ const FOLLOW_DEADZONE = 10;   // (도달 가능한)목표와 이보다 가까우
 // 물개가 지느러미로 몸을 끄는 느낌: '슥' 두 번 밀고 → 쉬고 → 반복.
 let gaitT = 0;                // 걸음새 시계(ms, 한 사이클 안에서 순환)
 const SCOOT_MS = 280;    // 한 번 '슥' 미는 시간
-const SCOOT_GAP = 90;    // 두 슥 사이 짧은 텀
-const SCOOT_PEAK = 2.4;  // 슥 미는 순간 최고 속도(px/틱) — 빠르게 슥, 끝에서 0으로 감속
-const REST_MS = 600;     // 2번 슥 후 쉬는 시간
+const SCOOT_GAP = 130;   // 두 슥 사이 텀
+const SCOOT_DIST = 26;   // 한 번 '슥'에 이동하는 거리(px) — 속도는 여기서 자동으로 유도됨
+const REST_MS = 850;     // 2번 슥 후 쉬는 시간
 const GAIT_CYCLE = 2 * SCOOT_MS + SCOOT_GAP + REST_MS;
-// 사이클 내 시각(gt)에서의 미는 속도. 두 '슥' 구간만 sin 으로 솟았다 꺼지고 나머진 0.
+// 사이클 내 시각(gt)에서의 한 틱(16ms) 이동량(px). 두 '슥' 구간만 sin 으로 솟았다 꺼지되,
+// 한 번에 정확히 SCOOT_DIST 만큼만 가도록 정규화한다(sin 의 [0,1] 적분 = 2/π 로 나눔).
+const SCOOT_AREA = 2 / Math.PI;
+function scootStep(p) {
+  return SCOOT_DIST * Math.sin(Math.PI * p) / SCOOT_AREA * (16 / SCOOT_MS);
+}
 function gaitVelocity(gt) {
-  if (gt < SCOOT_MS) return SCOOT_PEAK * Math.sin(Math.PI * (gt / SCOOT_MS));
+  if (gt < SCOOT_MS) return scootStep(gt / SCOOT_MS);
   if (gt < SCOOT_MS + SCOOT_GAP) return 0;            // 두 슥 사이 잠깐
   const g2 = gt - SCOOT_MS - SCOOT_GAP;
-  if (g2 < SCOOT_MS) return SCOOT_PEAK * Math.sin(Math.PI * (g2 / SCOOT_MS));
+  if (g2 < SCOOT_MS) return scootStep(g2 / SCOOT_MS);
   return 0;                                            // 쉬는 구간
 }
 
