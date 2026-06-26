@@ -128,19 +128,23 @@ window.geumoki.onHitEdge((side) => {
   setFacing(away);     // 이미지가 왼쪽을 봄 → 이동방향 반대로 flip
 });
 
-// 손에서 놓여 중력으로 떨어진 뒤 바닥에 '퉁' 착지했을 때
-window.geumoki.onLanded((impact) => {
-  falling = false;
+// 손에서 놓여 중력으로 떨어진 뒤 바닥에 '퉁' 닿았을 때(무거운 물개라 통통통 몇 번 튕김)
+// bounce: 0 = 처음 큰 충격, 1+ = 잔여 통통 튕김
+window.geumoki.onLanded((impact, bounce) => {
+  if (bounce === 0) falling = false;   // 첫 접촉부터 어슬렁 재개(튕기는 잔동작은 squash로만 표현)
   if (dragging) return;            // 떨어지는 도중 다시 잡았으면 무시
   // 쓰다듬는 중이면 착지 표현(아야/물방울/퉁 찌부러짐)이 하트와 겹치지 않게 무시
   if (pettingUntil && now() < pettingUntil) return;
-  eyesClosedUntil = now() + 500;   // 땅에 닿은 뒤 0.5초간 눈 감김 유지
-  if (impact >= 6) {               // 충분히 떨어졌을 때만 아파함
-    bubbleEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
-    bubbleEl.classList.add('show');
-    bubbleUntil = now() + 1600;
-    splashDrops();                 // 퉁! 하고 물방울이 튐
-    landSquash = { start: now(), dur: 360, amp: clamp(impact / 90, 0.12, 0.28) };
+  eyesClosedUntil = now() + 500;   // 닿을 때마다 0.5초씩 눈 감김 유지(튕기는 동안 계속 감음)
+  if (impact >= 6) {               // 충분히 떨어졌을 때만 표현
+    // 매 접촉마다 '퉁' 찌부러짐(충격에 비례). 튕길수록 약해져 자연스레 잦아든다.
+    landSquash = { start: now(), dur: 360, amp: clamp(impact / 90, 0.10, 0.28) };
+    if (bounce === 0) {            // 아파함/물방울은 처음 큰 충격에만(통통 튕길 때마다 도배 방지)
+      bubbleEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
+      bubbleEl.classList.add('show');
+      bubbleUntil = now() + 1600;
+      splashDrops();               // 퉁! 하고 물방울이 튐
+    }
   }
 });
 

@@ -66,15 +66,25 @@ function dropToFloor() {
   }
   let vy = 0;
   const G = 1.4;                         // 매 틱 가속도(px) — 클수록 빨리 떨어짐
+  // 물개라 무겁다 → 바닥에 닿으면 속도를 많이 잃고 작게 '통통통' 몇 번만 튕긴다.
+  const RESTITUTION = 0.4;               // 튕김 후 남는 속도 비율(낮을수록 무겁고 덜 튕김)
+  const MIN_BOUNCE = 2.2;                // 튕김 속도가 이보다 작으면 그만 튕기고 멈춤
+  let bounce = 0;                        // 몇 번째 바닥 접촉인지(0=처음 큰 충격, 1+=잔여 통통)
   dropTimer = setInterval(() => {
     if (!win || win.isDestroyed()) { cancelDrop(); return; }
     const [cx, cy] = win.getPosition();
     vy += G;
     const ny = cy + vy;
-    if (ny >= floorY) {                  // 바닥 도달 → 착지
+    if (ny >= floorY) {                  // 바닥 도달 → 착지(또는 튕김)
       win.setBounds({ x: cx, y: floorY, width: W, height: H });
-      cancelDrop();
-      win.webContents.send('landed', Math.round(vy));  // 착지 속도(충격) 전달
+      win.webContents.send('landed', Math.round(vy), bounce);  // 착지 속도(충격)+몇 번째 튕김
+      const rebound = vy * RESTITUTION;
+      if (rebound >= MIN_BOUNCE) {       // 아직 튕길 힘이 남았으면 위로 통!
+        vy = -rebound;
+        bounce++;
+      } else {
+        cancelDrop();                    // 거의 멈췄으면 바닥에 안착
+      }
     } else {
       win.setBounds({ x: cx, y: Math.round(ny), width: W, height: H });
     }

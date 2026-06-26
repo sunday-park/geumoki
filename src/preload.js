@@ -17,8 +17,9 @@ contextBridge.exposeInMainWorld('geumoki', {
   reportExtent: (left, right) => ipcRenderer.send('seal-extent', left, right),
   // 화면 끝(벽)에 닿았을 때 수신 (side: -1 왼쪽, +1 오른쪽)
   onHitEdge: (cb) => ipcRenderer.on('hit-edge', (_e, side) => cb(side)),
-  // 손에서 놓은 뒤 중력으로 떨어져 바닥에 착지했을 때 수신 (impact: 착지 속도)
-  onLanded: (cb) => ipcRenderer.on('landed', (_e, impact) => cb(impact)),
+  // 손에서 놓은 뒤 중력으로 떨어져 바닥에 닿았을 때 수신
+  // (impact: 접촉 속도, bounce: 몇 번째 접촉 — 0=처음 큰 충격, 1+=잔여 통통 튕김)
+  onLanded: (cb) => ipcRenderer.on('landed', (_e, impact, bounce) => cb(impact, bounce || 0)),
   // 우클릭 메뉴 띄우기
   contextMenu: () => ipcRenderer.send('show-context-menu'),
 });
