@@ -47,6 +47,17 @@ let pettingUntil = 0;
 let pettingStart = 0;   // 쓰다듬기 시작 시각(시작할 때 딱 한 번 '출렁'용)
 let nextHeart = 0;
 
+// 작업이 끝나면(done) 기뻐서 두 번 높이 '콩콩' 뛴다.
+let hop = null;         // 현재 점프 애니메이션 { start, dur, h }
+let hopsLeft = 0;       // 남은 점프 횟수
+let nextHopAt = 0;      // 다음 점프 시작 시각(콩~콩 사이 짧은 텀)
+function celebrateDone() {
+  walk = null;          // 걷던 중이면 멈추고
+  hop = null;
+  hopsLeft = 2;         // 두 번 높이 콩콩
+  nextHopAt = now();    // 곧바로 첫 점프
+}
+
 function say(category) {
   const list = MSG[category];
   if (!list || !list.length) return;
@@ -79,6 +90,7 @@ function react(state) {
       break;
     case 'done':
       say('done');
+      celebrateDone();   // 끝났다! 두 번 높이 콩콩
       break;
     case 'waiting':
       say('waiting');
@@ -354,6 +366,14 @@ function tick() {
     nextHeart = t + 150 + Math.random() * 200;
   }
 
+  // 작업이 끝나면(done) 두 번 높이 '콩콩' 뛴다. 한 번 착지하면 짧은 텀 뒤 다음 콩.
+  // (잡혀있거나 떨어지거나 쓰다듬는 중이면 멈춤)
+  if (hopsLeft > 0 && !hop && t >= nextHopAt && !dragging && !falling && !petting) {
+    hop = { start: t, dur: 480, h: 34 };   // 높이 점프
+    hopsLeft--;
+    nextHopAt = t + 480 + 90;              // 착지 후 살짝 텀 두고 다음 콩
+  }
+
   // 어슬렁(아주 가끔, 부드럽게) — 쓰다듬는 중이거나 커서가 올라와 있으면 가만히 있는다
   if (!walk && t > nextWalk && t > restUntil && !falling && !petting && !interactive) startWalk(t);
   let bob = walk ? stepWalk(t) : 0;
@@ -408,9 +428,18 @@ function tick() {
     }
   }
 
-  // 변형: 방향 + 착지 찌부러짐 + 뒤뚱 (숨쉬기는 위 배 타원에서 처리)
+  // 완료 '콩콩' 점프: 0에서 올라갔다 내려오는 포물선(sin) 한 번.
+  let hopY = 0;
+  if (hop) {
+    const e = (t - hop.start) / hop.dur;
+    if (e >= 1) hop = null;
+    else hopY = Math.sin(e * Math.PI) * hop.h;
+  }
+
+  // 변형: 방향 + 착지 찌부러짐 + 뒤뚱/점프 (숨쉬기는 위 배 타원에서 처리)
+  const ty = bob + hopY;   // 걷는 뒤뚱 + 완료 점프를 함께 위로 올림
   let tf = `scaleX(${(facing * sx).toFixed(4)}) scaleY(${sy.toFixed(4)})`;
-  if (bob) tf += ` translateY(${(-bob).toFixed(2)}px)`;
+  if (ty) tf += ` translateY(${(-ty).toFixed(2)}px)`;
   if (petTrX) tf += ` translateX(${petTrX.toFixed(2)}px)`;
   cv.style.transform = tf;
 
@@ -495,6 +524,7 @@ window.addEventListener('mousedown', (e) => {
     falling = false;    // 떨어지는 중 다시 잡힘
     eyesClosedUntil = 0;// 다시 잡으면 눈 뜸
     landSquash = null;
+    hop = null; hopsLeft = 0;   // 콩콩 중이었어도 잡으면 멈춤
     document.body.style.cursor = 'grabbing';
     window.geumoki.dragStart();
   }
@@ -522,6 +552,7 @@ window.addEventListener('dblclick', (e) => {
   walk = null;
   eyesClosedUntil = 0;
   landSquash = null;
+  hop = null; hopsLeft = 0;       // 콩콩 중이었어도 쓰다듬으면 멈춤
   pettingUntil = now() + 2600;
   pettingStart = now();          // 시작할 때 한 번 출렁
   nextHeart = 0;                 // 즉시 첫 하트
