@@ -216,6 +216,8 @@ window.geumoki.onFollowStep(({ dir, moving }) => {
   followMoving = !!moving;
   if (dir) setFacing(dir);          // 가는 방향을 바라봄
 });
+// 멀리서 기어오는 중 가끔 한마디
+window.geumoki.onFollowTalk(() => { if (following) say('follow'); });
 
 // ---- 부드러운 어슬렁 이동 ----
 // 이미지가 왼쪽을 봄 → 왼쪽 이동(hx<0)은 정방향(scaleX +1), 오른쪽 이동(hx>0)은 반전(scaleX -1).

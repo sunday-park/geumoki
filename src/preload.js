@@ -25,4 +25,6 @@ contextBridge.exposeInMainWorld('geumoki', {
   // 따라오기 on/off 토글 수신 + 따라가는 동안의 방향/이동 상태 수신
   onFollowMode: (cb) => ipcRenderer.on('follow-mode', (_e, on) => cb(on)),
   onFollowStep: (cb) => ipcRenderer.on('follow-step', (_e, s) => cb(s || {})),
+  // 멀리서 따라오는 중 가끔 한마디 신호(대사는 renderer 가 고름)
+  onFollowTalk: (cb) => ipcRenderer.on('follow-talk', () => cb()),
 });

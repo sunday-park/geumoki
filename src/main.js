@@ -335,25 +335,41 @@ let followTimer = null;
 let followDir = 0, followMoving = false;   // renderer 에 보낸 마지막 상태(바뀔 때만 전송)
 let followX = null, followY = null;        // 부동소수 누적 위치(1px 미만 속도 손실 방지)
 const FOLLOW_DEADZONE = 10;   // (도달 가능한)목표와 이보다 가까우면 멈춤·평소 상태로
-// 물개가 지느러미로 몸을 끄는 느낌: '슥' 두 번 밀고 → 쉬고 → 반복.
-let gaitT = 0;                // 걸음새 시계(ms, 한 사이클 안에서 순환)
+const FOLLOW_FAR = 300;       // 목표까지 이보다 멀면 가끔 한마디(에구 힘들다 등)
+let nextFollowTalk = 0;       // 다음 한마디 가능 시각(ms)
+// 물개가 지느러미로 몸을 끄는 느낌: '슥'을 1~2번(랜덤) 밀고 → 쉬고 → 반복.
+let gaitPhase = 'scoot';      // 'scoot'(미는 중) | 'gap'(슥과 슥 사이) | 'rest'(쉼)
+let gaitPhaseT = 0;           // 현재 구간에서 흐른 시간(ms)
+let scootsLeft = 1;           // 이번 사이클에 남은 슥 횟수
 const SCOOT_MS = 280;    // 한 번 '슥' 미는 시간
-const SCOOT_GAP = 130;   // 두 슥 사이 텀
+const SCOOT_GAP = 130;   // 슥과 슥 사이 텀
 const SCOOT_DIST = 26;   // 한 번 '슥'에 이동하는 거리(px) — 속도는 여기서 자동으로 유도됨
-const REST_MS = 850;     // 2번 슥 후 쉬는 시간
-const GAIT_CYCLE = 2 * SCOOT_MS + SCOOT_GAP + REST_MS;
-// 사이클 내 시각(gt)에서의 한 틱(16ms) 이동량(px). 두 '슥' 구간만 sin 으로 솟았다 꺼지되,
-// 한 번에 정확히 SCOOT_DIST 만큼만 가도록 정규화한다(sin 의 [0,1] 적분 = 2/π 로 나눔).
+const REST_MS = 850;     // 슥(들) 후 쉬는 시간
+// 슥 한 번의 한 틱(16ms) 이동량(px): sin 으로 솟았다 꺼지되 합이 정확히 SCOOT_DIST.
 const SCOOT_AREA = 2 / Math.PI;
 function scootStep(p) {
   return SCOOT_DIST * Math.sin(Math.PI * p) / SCOOT_AREA * (16 / SCOOT_MS);
 }
-function gaitVelocity(gt) {
-  if (gt < SCOOT_MS) return scootStep(gt / SCOOT_MS);
-  if (gt < SCOOT_MS + SCOOT_GAP) return 0;            // 두 슥 사이 잠깐
-  const g2 = gt - SCOOT_MS - SCOOT_GAP;
-  if (g2 < SCOOT_MS) return scootStep(g2 / SCOOT_MS);
-  return 0;                                            // 쉬는 구간
+function resetGait() {
+  gaitPhase = 'scoot'; gaitPhaseT = 0;
+  scootsLeft = Math.random() < 0.5 ? 1 : 2;   // 이번엔 슥 1번? 슥슥 2번?
+}
+// 한 틱 진행시키고 이번 틱 이동량(px)을 돌려준다(슥 구간에서만 > 0).
+function gaitAdvance() {
+  gaitPhaseT += 16;
+  if (gaitPhase === 'scoot') {
+    if (gaitPhaseT < SCOOT_MS) return scootStep(gaitPhaseT / SCOOT_MS);
+    scootsLeft--;                                  // 슥 한 번 끝
+    gaitPhase = scootsLeft > 0 ? 'gap' : 'rest';   // 더 밀 게 남았으면 잠깐 텀, 아니면 휴식
+    gaitPhaseT = 0;
+    return 0;
+  }
+  if (gaitPhase === 'gap') {
+    if (gaitPhaseT >= SCOOT_GAP) { gaitPhase = 'scoot'; gaitPhaseT = 0; }
+    return 0;
+  }
+  if (gaitPhaseT >= REST_MS) resetGait();          // 새 사이클(슥 1~2번 랜덤)
+  return 0;
 }
 
 function setFollow(v) {
@@ -362,7 +378,8 @@ function setFollow(v) {
   if (followTimer) { clearInterval(followTimer); followTimer = null; }
   followDir = 0; followMoving = false;
   followX = null; followY = null;          // 다음 스텝에서 현재 창 위치로 다시 맞춤
-  gaitT = 0;                               // 걸음새 처음('슥')부터 시작
+  resetGait();                             // 걸음새 새로 시작(슥 1~2번 랜덤)
+  nextFollowTalk = Date.now() + 2500;      // 켜고 잠시 뒤부터 가끔 한마디
   if (v) followTimer = setInterval(followStep, 16);
 }
 
@@ -386,14 +403,16 @@ function followStep() {
   const dx = tx - followX;
   const dy = ty - followY;
   const dist = Math.hypot(dx, dy);
+  // 멀리서 기어오는 중이면 가끔 한마디(에구 힘들다 등) — 대사 선택은 renderer 가.
+  if (dist > FOLLOW_FAR && Date.now() >= nextFollowTalk) {
+    win.webContents.send('follow-talk');
+    nextFollowTalk = Date.now() + 4000 + Math.random() * 3500;
+  }
   let dir = 0, moving = false;
   if (dist > FOLLOW_DEADZONE) {
-    // 걸음새 진행: 슥 구간엔 밀고(moving), 쉬는 구간엔 가만히.
-    gaitT += 16;
-    if (gaitT >= GAIT_CYCLE) gaitT -= GAIT_CYCLE;
-    const v = gaitVelocity(gaitT);
-    if (v > 0) {
-      const step = Math.min(v, dist);
+    // 걸음새 진행: 슥 구간엔 밀고(moving), 텀·휴식 구간엔 가만히.
+    const step = Math.min(gaitAdvance(), dist);
+    if (step > 0) {
       followX += (dx / dist) * step;
       followY += (dy / dist) * step;
       win.setBounds({ x: Math.round(followX), y: Math.round(followY), width: W, height: H });
@@ -401,7 +420,7 @@ function followStep() {
       if (Math.abs(dx) > 0.5) dir = dx < 0 ? -1 : 1;
     }
   } else {
-    gaitT = 0;   // 도착하면 다음엔 '슥'부터 다시 시작
+    resetGait();   // 도착하면 다음엔 새 사이클(슥부터)
   }
   // 방향/이동상태가 바뀔 때만 renderer 로 알림(매 프레임 IPC 도배 방지)
   if (dir !== followDir || moving !== followMoving) {
