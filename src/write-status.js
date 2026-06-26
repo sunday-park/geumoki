@@ -22,6 +22,12 @@ const KO = {
   serve: '서버 실행', dev: '개발', watch: '감시', clean: '정리',
   export: '내보내기', import: '가져오기', ls: '목록', cat: '보기',
   mkdir: '폴더 생성', touch: '파일 생성',
+  cp: '복사', mv: '이동', rm: '삭제', find: '찾기', kill: '종료',
+  head: '앞부분', tail: '끝부분', publish: '배포', release: '릴리스',
+  migrate: '마이그레이션', generate: '생성', validate: '검증', verify: '검증',
+  sync: '동기화', revert: '되돌리기', reset: '리셋', tag: '태그',
+  branch: '브랜치', switch: '전환', stash: '스태시', prune: '정리',
+  typecheck: '타입검사', tsc: '타입검사', refactor: '리팩토링', optimize: '최적화',
 };
 
 // Claude Code 도구 이름 → 한국어 동작
@@ -62,6 +68,11 @@ const STOP = new Set([
   '에서', '으로', '까지', '부터', '한테', '에게', '이랑', '라고', '라는', '위해', '통해', '대해',
   // 구어체 지시어(노이즈)
   '얘', '얘가', '걔', '걔가', '쟤', '쟤가', '얘를', '얘네', '걔네',
+  // 명령 어미/말투(노이즈) — 일반 명사(코드·파일·기능 등)는 일부러 남겨둔다
+  '만들어', '만들어줘', '바꿔', '바꿔줘', '고쳐', '고쳐줘', '넣어', '넣어줘', '빼줘',
+  '지워', '지워줘', '보여줘', '알려줘', '적용', '반영', '진행', '처리', '부탁해',
+  '가능', '가능해', '될까', '어때', '괜찮아', '일단', '먼저', '다음', '이번',
+  '전체', '전부', '모두', '대한', '위한', '통한',
 ]);
 
 // 단어 끝에 붙은 흔한 조사를 떼어낸다(너무 짧아지지 않게 어간 2글자는 보호).
@@ -86,6 +97,24 @@ function keywordsFromPrompt(prompt) {
   return picked.join(' ');
 }
 
+// Bash 명령 → 키워드. 플래그(-x)와 앞쪽 환경변수(VAR=val)는 건너뛰고
+// '프로그램 + 첫 의미있는 인자'만 뽑는다. (예: npm install→npm 설치, node --check x.js→node x.js)
+function bashKeyword(cmd) {
+  const first = String(cmd).split(/[|&;]+/)[0].trim();          // 파이프/체인은 첫 명령만
+  let toks = first.split(/\s+/).filter(Boolean);
+  while (toks.length && /^[A-Za-z_]\w*=/.test(toks[0])) toks.shift(); // 앞 환경변수(VAR=x) 제외
+  if (!toks.length) return '명령 실행';
+  const prog = toks[0];
+  const rest = toks.slice(1).filter((a) => !a.startsWith('-'));  // 플래그(-x, --xxx) 제외
+  // npm/yarn/pnpm run <script> → 버려지기 쉬운 'run' 대신 스크립트 이름을 보여준다
+  if (/^(npm|yarn|pnpm)$/i.test(prog) && rest[0] === 'run' && rest[1]) {
+    return `${prog} ${rest[1]}`;
+  }
+  let sub = rest[0];
+  if (sub && /[\\/]/.test(sub)) sub = sub.split(/[\\/]/).pop();  // 경로면 파일명만
+  return sub ? `${koreanizeWord(prog)} ${koreanizeWord(sub)}` : koreanizeWord(prog);
+}
+
 // 도구 사용 이벤트 → '지금 실제로 하는 작업' 키워드 (예: renderer.js 수정, npm 설치)
 function toolKeyword(ev) {
   if (!ev || typeof ev !== 'object') return '';
@@ -95,8 +124,7 @@ function toolKeyword(ev) {
   if (tool === 'Bash') {
     const cmd = String(ti.command || '').trim();
     if (!cmd) return '명령 실행';
-    // 명령 앞 두 토큰만 한국어로 (예: "npm install" → "npm 설치")
-    return cmd.split(/\s+/).slice(0, 2).map(koreanizeWord).join(' ');
+    return bashKeyword(cmd);
   }
   const fp = ti.file_path || ti.path || ti.notebook_path || ti.pattern || '';
   const base = fp ? String(fp).split(/[\\/]/).pop() : '';
@@ -104,6 +132,9 @@ function toolKeyword(ev) {
   return base ? `${base} ${act}` : act;
 }
 
+// 훅이 직접 호출할 때만 실제로 메모지 파일을 쓴다(아래 require.main 가드).
+// 순수 함수들은 모듈로 export 되어 테스트에서 부작용 없이 검증할 수 있다.
+function runCli() {
 const state = (process.argv[2] || 'idle').trim();
 let raw = '';
 let finished = false;
@@ -166,3 +197,10 @@ try {
 } catch {
   finish();
 }
+}
+
+// 훅으로 직접 실행될 때만 메모지를 쓴다. require()로 불러오면(테스트) 부작용 없음.
+if (require.main === module) runCli();
+
+// 키워드 추출 규칙을 테스트에서 검증할 수 있게 순수 함수만 내보낸다.
+module.exports = { keywordsFromPrompt, bashKeyword, toolKeyword, koreanizeWord };
