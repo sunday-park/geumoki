@@ -58,6 +58,11 @@ function celebrateDone() {
   nextHopAt = now();    // 곧바로 첫 점프
 }
 
+// 커서 쳐다보기: 가까이 온 마우스 쪽을 바라본다(좌우 방향 전환만).
+// (창은 클릭 통과 상태에서도 forward:true 라 창 영역 안에서는 mousemove가 들어온다)
+let pointerX = null, pointerY = null;  // 마지막으로 본 커서 위치(창 기준 px)
+let pointerSeen = 0;                   // 그 시각(잠깐 안 보이면 방향 갱신 멈춤)
+
 function say(category) {
   const list = MSG[category];
   if (!list || !list.length) return;
@@ -428,6 +433,19 @@ function tick() {
     }
   }
 
+  // 커서 쳐다보기: 쉬고 있을 때 가까이 온 커서 쪽을 바라본다(좌우 방향만, 기울이진 않음).
+  // (걷거나·잡혀있거나·떨어지거나·쓰다듬받거나·대기 중이면 방향 그대로 둔다)
+  const idleForWatch = !walk && !dragging && !falling && !petting && mode !== 'waiting';
+  if (idleForWatch && pointerX !== null && t - pointerSeen < 600) {
+    const rect = cv.getBoundingClientRect();
+    const dxp = pointerX - (rect.left + rect.width / 2);     // +면 커서가 오른쪽
+    const dyp = pointerY - (rect.top + rect.height * 0.45);  // 머리 근처 기준
+    // 적당히 가깝고, 가운데서 충분히 벗어났을 때만 그쪽을 바라봄(가운데 근처엔 안 뒤집어 깜빡임 방지)
+    if (Math.hypot(dxp, dyp) < 200 && Math.abs(dxp) > 14) {
+      facing = dxp < 0 ? 1 : -1;                             // 이미지 왼쪽향 기준 커서 쪽으로 flip
+    }
+  }
+
   // 완료 '콩콩' 점프: 0에서 올라갔다 내려오는 포물선(sin) 한 번.
   let hopY = 0;
   if (hop) {
@@ -503,6 +521,7 @@ function overSeal(clientX, clientY) {
 }
 
 window.addEventListener('mousemove', (e) => {
+  pointerX = e.clientX; pointerY = e.clientY; pointerSeen = now();  // 커서 쳐다보기용
   if (dragging) {
     window.geumoki.dragFollow();   // 메인이 OS 커서 절대좌표로 따라옴(미끄러짐 없음)
     return;
