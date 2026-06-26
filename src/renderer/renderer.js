@@ -65,10 +65,11 @@ let pointerSeen = 0;                   // 그 시각(잠깐 안 보이면 방향
 
 // 잡고 좌우로 여러 번 흔들면 '어지러움' — 눈 질끈 감고 우웩, 머리 위에 큰 💫.
 let dizzyUntil = 0;                    // 이 시각까지 어지러운 상태
-let shakeLastX = null, shakeDir = 0, shakeAccum = 0, shakeCount = 0, shakeLastRev = 0;
-const SHAKE_SWING = 18;    // 한 번 '흔듦'으로 칠 최소 좌우 이동(px) — 작은 떨림은 무시
-const SHAKE_NEEDED = 4;    // 좌우 방향전환을 이만큼 하면 어지러워함
-const SHAKE_WINDOW = 700;  // 방향전환 간격이 이보다 뜸하면 카운트 리셋(ms)
+let shakeDir = 0, shakeExtreme = null, shakePeak = null, shakeCount = 0, shakeLastRev = 0;
+const SHAKE_SWING = 22;    // 한 번 '흔듦'으로 칠 최소 스윙 폭(정점~정점 px) — 작은 떨림 무시
+const SHAKE_BACKOFF = 6;   // 정점에서 이만큼 되돌아와야 '방향이 꺾였다'고 본다(디바운스)
+const SHAKE_NEEDED = 4;    // 좌우로 이만큼 꺾으면(=흔들면) 어지러워함
+const SHAKE_WINDOW = 700;  // 꺾임 간격이 이보다 뜸하면 카운트 리셋(ms)
 const DIZZY_DUR = 2200;    // 어지러움 지속(ms)
 function triggerDizzy(t) {
   dizzyUntil = t + DIZZY_DUR;
@@ -78,27 +79,38 @@ function triggerDizzy(t) {
   say('dizzy');
   bubbleUntil = t + DIZZY_DUR + 600;   // 말풍선을 어지러운 내내 유지
 }
-// 드래그 중 커서의 좌우 방향 전환 횟수를 세서, 충분히 휘둘렀을 때만 한 번으로 인정한다.
+// 드래그 중 커서의 '정점(꺾이는 지점)'을 추적해 진짜 좌우 흔듦만 센다.
+// 한 방향으로 쭉 미는 동작은 정점에서 되돌아오지 않으므로 0회로 잡힌다.
 function trackShake(x, t) {
-  if (shakeLastX === null) { shakeLastX = x; return; }
-  const dx = x - shakeLastX;
-  shakeLastX = x;
-  if (Math.abs(dx) < 1) return;        // 미세 떨림 무시
-  const dir = dx < 0 ? -1 : 1;
-  if (dir === shakeDir) { shakeAccum += Math.abs(dx); return; }
-  // 방향 전환 발생: 직전 방향으로 충분히(>=SHAKE_SWING) 휘둘렀을 때만 한 번으로 친다.
-  if (shakeAccum >= SHAKE_SWING) {
-    if (t - shakeLastRev > SHAKE_WINDOW) shakeCount = 0;  // 너무 뜸하면 처음부터
-    shakeCount++;
-    shakeLastRev = t;
-    if (shakeCount >= SHAKE_NEEDED && (!dizzyUntil || t >= dizzyUntil)) {
-      triggerDizzy(t);
-      shakeCount = 0;
+  if (shakeExtreme === null) { shakeExtreme = x; shakePeak = x; return; }
+  if (shakeDir === 0) {
+    // 첫 진행 방향 정하기(작은 떨림으론 정하지 않음)
+    if (Math.abs(x - shakeExtreme) >= SHAKE_BACKOFF) {
+      shakeDir = x > shakeExtreme ? 1 : -1;
+      shakePeak = x;
     }
+    return;
   }
-  shakeDir = dir; shakeAccum = Math.abs(dx);
+  // 같은 방향으로 더 멀리 갔으면 정점 갱신
+  if ((x - shakePeak) * shakeDir > 0) { shakePeak = x; return; }
+  // 정점에서 반대로 SHAKE_BACKOFF 이상 되돌아왔으면 '꺾임' 확정
+  if (Math.abs(x - shakePeak) >= SHAKE_BACKOFF) {
+    const swing = Math.abs(shakePeak - shakeExtreme);   // 이번 스윙 폭
+    if (swing >= SHAKE_SWING) {                          // 충분히 휘둘렀을 때만 1회
+      if (t - shakeLastRev > SHAKE_WINDOW) shakeCount = 0;  // 너무 뜸하면 처음부터
+      shakeCount++;
+      shakeLastRev = t;
+      if (shakeCount >= SHAKE_NEEDED && (!dizzyUntil || t >= dizzyUntil)) {
+        triggerDizzy(t);
+        shakeCount = 0;
+      }
+    }
+    shakeExtreme = shakePeak;   // 이번 정점이 다음 스윙의 시작점
+    shakeDir = -shakeDir;
+    shakePeak = x;
+  }
 }
-function resetShake() { shakeLastX = null; shakeDir = 0; shakeAccum = 0; shakeCount = 0; }
+function resetShake() { shakeDir = 0; shakeExtreme = null; shakePeak = null; shakeCount = 0; }
 
 function say(category) {
   const list = MSG[category];
@@ -520,8 +532,8 @@ function tick() {
   let tf = `scaleX(${(facing * sx).toFixed(4)}) scaleY(${sy.toFixed(4)})`;
   if (ty) tf += ` translateY(${(-ty).toFixed(2)}px)`;
   if (petTrX) tf += ` translateX(${petTrX.toFixed(2)}px)`;
-  // 어지러우면 비틀비틀 좌우로 흔들(바닥 기준 ±4°)
-  if (dizzyUntil && t < dizzyUntil) tf += ` rotate(${(Math.sin(t * 0.011) * 4).toFixed(2)}deg)`;
+  // 어지러우면 비틀비틀 좌우로 흔들(바닥 기준 ±4°, 흔들림 속도 아주 살짝 빠르게)
+  if (dizzyUntil && t < dizzyUntil) tf += ` rotate(${(Math.sin(t * 0.013) * 4).toFixed(2)}deg)`;
   cv.style.transform = tf;
 
   requestAnimationFrame(tick);
