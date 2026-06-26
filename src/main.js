@@ -7,6 +7,7 @@ const { app, BrowserWindow, ipcMain, Menu, Tray, screen, nativeImage } = require
 const fs = require('fs');
 const path = require('path');
 const { DIR, STATUS_FILE } = require('./status-path');
+const settings = require('./settings');
 
 // 일부 Windows 환경에서 GPU 가속이 투명 창을 안 그리는 문제를 막는다.
 app.disableHardwareAcceleration();
@@ -123,13 +124,24 @@ function createWindow() {
   const display = screen.getPrimaryDisplay();
   const wa = display.workArea;          // 작업표시줄 제외 영역 {x,y,width,height}
   // 금옥이 바닥면이 작업영역 하단선(= 작업표시줄 상단 라인)에 정확히 닿도록 창 y 계산
-  const restX = wa.x + wa.width - W - 24;
-  const startY = restY(wa);
+  let restX = wa.x + wa.width - W - 24;
+  let startY = restY(wa);
+
+  // 지난번 종료 위치가 저장돼 있으면 거기서 깨어난다.
+  // 단, 그새 모니터 구성이 바뀌었을 수 있으니 그 위치가 속한 모니터 작업영역 안으로 가둔다.
+  if (!DEBUG) {
+    const saved = settings.load();
+    if (Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+      const swa = screen.getDisplayMatching({ x: saved.x, y: saved.y, width: W, height: H }).workArea;
+      restX = clampX(saved.x, swa).x;
+      startY = Math.max(swa.y, Math.min(saved.y, restY(swa)));
+    }
+  }
 
   win = new BrowserWindow({
     width: W,
     height: H,
-    // 평소엔 작업표시줄 위 오른쪽, 디버그면 화면 중앙
+    // 평소엔 저장된(또는 기본) 위치, 디버그면 화면 중앙
     x: DEBUG ? Math.floor(wa.x + (wa.width - W) / 2) : restX,
     y: DEBUG ? Math.floor(wa.y + (wa.height - H) / 2) : startY,
     frame: false,
@@ -153,6 +165,27 @@ function createWindow() {
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
+
+  // 위치가 바뀔 때마다(드래그·낙하·어슬렁) 0.7초 잠잠해지면 마지막 자리를 저장한다.
+  // 매 프레임 저장하면 디스크를 너무 자주 두드리므로 디바운스로 한 번만 쓴다.
+  let saveTimer = null;
+  function persistPosition() {
+    if (DEBUG || !win || win.isDestroyed()) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (!win || win.isDestroyed()) return;
+      const [x, y] = win.getPosition();
+      settings.save({ x, y });
+    }, 700);
+  }
+  win.on('move', persistPosition);
+  // 종료 직전엔 디바운스를 기다리지 않고 곧바로 마지막 위치를 저장한다.
+  app.on('before-quit', () => {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    if (DEBUG || !win || win.isDestroyed()) return;
+    const [x, y] = win.getPosition();
+    settings.save({ x, y });
+  });
 
   // 작업표시줄 등에 가려지지 않도록 주기적으로 최상단 재적용(포커스는 안 뺏음)
   setInterval(() => {
