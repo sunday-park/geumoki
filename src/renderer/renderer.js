@@ -63,6 +63,43 @@ function celebrateDone() {
 let pointerX = null, pointerY = null;  // 마지막으로 본 커서 위치(창 기준 px)
 let pointerSeen = 0;                   // 그 시각(잠깐 안 보이면 방향 갱신 멈춤)
 
+// 잡고 좌우로 여러 번 흔들면 '어지러움' — 눈 질끈 감고 우웩, 머리 위에 큰 💫.
+let dizzyUntil = 0;                    // 이 시각까지 어지러운 상태
+let shakeLastX = null, shakeDir = 0, shakeAccum = 0, shakeCount = 0, shakeLastRev = 0;
+const SHAKE_SWING = 18;    // 한 번 '흔듦'으로 칠 최소 좌우 이동(px) — 작은 떨림은 무시
+const SHAKE_NEEDED = 4;    // 좌우 방향전환을 이만큼 하면 어지러워함
+const SHAKE_WINDOW = 700;  // 방향전환 간격이 이보다 뜸하면 카운트 리셋(ms)
+const DIZZY_DUR = 2200;    // 어지러움 지속(ms)
+function triggerDizzy(t) {
+  dizzyUntil = t + DIZZY_DUR;
+  eyesClosedUntil = t + DIZZY_DUR;     // 어지러운 동안 눈 질끈
+  restUntil = t + DIZZY_DUR + 400;     // 끝난 뒤에도 잠깐 가만히
+  walk = null; hop = null; hopsLeft = 0;
+  say('dizzy');
+  bubbleUntil = t + DIZZY_DUR + 600;   // 말풍선을 어지러운 내내 유지
+}
+// 드래그 중 커서의 좌우 방향 전환 횟수를 세서, 충분히 휘둘렀을 때만 한 번으로 인정한다.
+function trackShake(x, t) {
+  if (shakeLastX === null) { shakeLastX = x; return; }
+  const dx = x - shakeLastX;
+  shakeLastX = x;
+  if (Math.abs(dx) < 1) return;        // 미세 떨림 무시
+  const dir = dx < 0 ? -1 : 1;
+  if (dir === shakeDir) { shakeAccum += Math.abs(dx); return; }
+  // 방향 전환 발생: 직전 방향으로 충분히(>=SHAKE_SWING) 휘둘렀을 때만 한 번으로 친다.
+  if (shakeAccum >= SHAKE_SWING) {
+    if (t - shakeLastRev > SHAKE_WINDOW) shakeCount = 0;  // 너무 뜸하면 처음부터
+    shakeCount++;
+    shakeLastRev = t;
+    if (shakeCount >= SHAKE_NEEDED && (!dizzyUntil || t >= dizzyUntil)) {
+      triggerDizzy(t);
+      shakeCount = 0;
+    }
+  }
+  shakeDir = dir; shakeAccum = Math.abs(dx);
+}
+function resetShake() { shakeLastX = null; shakeDir = 0; shakeAccum = 0; shakeCount = 0; }
+
 function say(category) {
   const list = MSG[category];
   if (!list || !list.length) return;
@@ -338,6 +375,28 @@ function drawHearts(t) {
   ctx.restore();
 }
 
+// ---- 어지러움 별(머리 위에 큰 💫 하나가 빙글 돈다) ----
+function drawDizzyStar(t) {
+  if (!dizzyUntil || t >= dizzyUntil) return;
+  const remain = dizzyUntil - t;
+  const since = DIZZY_DUR - remain;
+  // 톡 나타났다가(처음 150ms) 끝물에(마지막 350ms) 서서히 사라짐
+  let alpha = 1;
+  if (since < 150) alpha = since / 150;
+  else if (remain < 350) alpha = remain / 350;
+  const a = t * 0.007;                       // 천천히 한 바퀴
+  const x = GRID / 2 + Math.cos(a) * 12;     // 머리 위에서 작은 원을 그리며
+  const y = 60 + Math.sin(a) * 6;            // 머리 위(캔버스 위쪽)
+  const size = 40 + Math.sin(t * 0.01) * 4;  // 크게, 살짝 맥동
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.font = `${size.toFixed(1)}px serif`;
+  ctx.fillText('💫', x, y);
+  ctx.restore();
+}
+
 // ---- 매 프레임 ----
 function tick() {
   const t = now();
@@ -403,6 +462,8 @@ function tick() {
   drawDrops(t);
   // 쓰다듬을 때 머리 위로 떠오르는 하트
   drawHearts(t);
+  // 흔들려서 어지러울 때 머리 위 큰 💫
+  drawDizzyStar(t);
 
   // 착지 '퉁' 찌부러짐: 닿는 순간 납작(가로로 퍼짐)했다가 출렁이며 원래대로.
   // (#seal transform-origin 이 바닥쪽이라 바닥에 눌리는 느낌이 난다)
@@ -459,6 +520,8 @@ function tick() {
   let tf = `scaleX(${(facing * sx).toFixed(4)}) scaleY(${sy.toFixed(4)})`;
   if (ty) tf += ` translateY(${(-ty).toFixed(2)}px)`;
   if (petTrX) tf += ` translateX(${petTrX.toFixed(2)}px)`;
+  // 어지러우면 비틀비틀 좌우로 흔들(바닥 기준 ±4°)
+  if (dizzyUntil && t < dizzyUntil) tf += ` rotate(${(Math.sin(t * 0.011) * 4).toFixed(2)}deg)`;
   cv.style.transform = tf;
 
   requestAnimationFrame(tick);
@@ -524,6 +587,7 @@ window.addEventListener('mousemove', (e) => {
   pointerX = e.clientX; pointerY = e.clientY; pointerSeen = now();  // 커서 쳐다보기용
   if (dragging) {
     window.geumoki.dragFollow();   // 메인이 OS 커서 절대좌표로 따라옴(미끄러짐 없음)
+    trackShake(e.clientX, now());  // 좌우로 마구 흔들면 → 어지러움
     return;
   }
   const over = overSeal(e.clientX, e.clientY);
@@ -542,6 +606,7 @@ window.addEventListener('mousedown', (e) => {
     walk = null;        // 잡으면 어슬렁 중단
     falling = false;    // 떨어지는 중 다시 잡힘
     eyesClosedUntil = 0;// 다시 잡으면 눈 뜸
+    resetShake();       // 흔들기 카운트 새로 시작
     landSquash = null;
     hop = null; hopsLeft = 0;   // 콩콩 중이었어도 잡으면 멈춤
     document.body.style.cursor = 'grabbing';
@@ -554,6 +619,7 @@ window.addEventListener('mouseup', () => {
     window.geumoki.dragEnd();  // 메인이 중력으로 떨어뜨리고, 착지하면 onLanded로 알림
   }
   dragging = false;
+  resetShake();
   if (interactive) document.body.style.cursor = 'grab';
 });
 window.addEventListener('contextmenu', (e) => {
