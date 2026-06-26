@@ -333,7 +333,8 @@ function toggleHidden() {
 let followMode = false;
 let followTimer = null;
 let followDir = 0, followMoving = false;   // renderer 에 보낸 마지막 상태(바뀔 때만 전송)
-const FOLLOW_SPEED = 0.7;     // 한 틱(16ms)에 기어오는 px — 느릿느릿
+let followX = null, followY = null;        // 부동소수 누적 위치(1px 미만 속도 손실 방지)
+const FOLLOW_SPEED = 0.7;     // 한 틱(16ms)에 기어오는 px — 느릿느릿(0.7≈초속 44px)
 const FOLLOW_DEADZONE = 10;   // (도달 가능한)목표와 이보다 가까우면 멈춤·평소 상태로
 
 function setFollow(v) {
@@ -341,6 +342,7 @@ function setFollow(v) {
   if (win && !win.isDestroyed()) win.webContents.send('follow-mode', v);
   if (followTimer) { clearInterval(followTimer); followTimer = null; }
   followDir = 0; followMoving = false;
+  followX = null; followY = null;          // 다음 스텝에서 현재 창 위치로 다시 맞춤
   if (v) followTimer = setInterval(followStep, 16);
 }
 
@@ -350,6 +352,12 @@ function followStep() {
   const c = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
   const wa = screen.getDisplayNearestPoint(c).workArea;
+  // 누적 위치가 실제 창과 크게 어긋났으면(드래그·낙하 등 외부 이동) 실제 위치로 재동기화.
+  // getPosition()은 정수라, 매 틱 여기서 다시 읽으면 0.7px 같은 소수 이동이 반올림에
+  // 먹혀 사라진다 → followX/Y 에 소수째 누적하고 창엔 반올림해서만 반영한다.
+  if (followX === null || Math.abs(followX - wx) > 2 || Math.abs(followY - wy) > 2) {
+    followX = wx; followY = wy;
+  }
   // 목표 창 좌상단(커서가 몸통 가운데에 오도록). 단, '도달 가능한' 위치로 먼저 가둔다.
   //  - 가로: 몸통이 좌우 벽을 넘지 않게(clampX)
   //  - 세로: 화면 위쪽 ~ 평소 쉬는 바닥 사이(작업표시줄 밑으론 안 내려감)
@@ -357,16 +365,16 @@ function followStep() {
   // 세로 거리가 영영 안 줄어 "계속 걷고 + 가로 이동이 느려지는" 문제가 생긴다.
   const tx = clampX(c.x - W / 2, wa).x;
   const ty = Math.max(wa.y, Math.min(c.y - H / 2, restY(wa)));
-  const dx = tx - wx;
-  const dy = ty - wy;
+  const dx = tx - followX;
+  const dy = ty - followY;
   const dist = Math.hypot(dx, dy);
   const moving = dist > FOLLOW_DEADZONE;
   let dir = 0;
   if (moving) {
     const step = Math.min(FOLLOW_SPEED, dist);
-    const nx = wx + (dx / dist) * step;
-    const ny = wy + (dy / dist) * step;
-    win.setBounds({ x: Math.round(nx), y: Math.round(ny), width: W, height: H });
+    followX += (dx / dist) * step;
+    followY += (dy / dist) * step;
+    win.setBounds({ x: Math.round(followX), y: Math.round(followY), width: W, height: H });
     if (Math.abs(dx) > 0.5) dir = dx < 0 ? -1 : 1;
   }
   // 방향/이동상태가 바뀔 때만 renderer 로 알림(매 프레임 IPC 도배 방지)
