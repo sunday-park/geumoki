@@ -5,6 +5,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "dev": "set GEUMOKI_DEV=1&& electron .",
     "install-hooks": "node src/install-hooks.js",
     "uninstall-hooks": "node src/install-hooks.js --remove"
   },

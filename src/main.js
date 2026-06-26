@@ -16,6 +16,11 @@ app.disableHardwareAcceleration();
 // (창이 화면에 뜨긴 하는지 눈으로 확인하는 용도)
 const DEBUG = process.env.GEUMOKI_DEBUG === '1';
 
+// GEUMOKI_DEV=1 (또는 DEBUG) 면 핫리로드: src/renderer 가 바뀌면 창을 자동 새로고침.
+// 수치 튜닝할 때 electron 을 껐다 켤 필요 없이 저장만 하면 바로 반영된다.
+// 평소(일반 사용) 엔 꺼져 있어 파일을 감시하지 않는다.
+const DEV = process.env.GEUMOKI_DEV === '1' || DEBUG;
+
 let win = null;
 let tray = null;
 let hidden = false;
@@ -353,6 +358,28 @@ function watchStatus() {
   setInterval(sendStatus, 1000);
 }
 
+// 핫리로드(개발용): src/renderer 의 .js/.html/.css 가 바뀌면 창을 새로고침한다.
+// 짧게 모아서(디바운스) 한 번만 reload → 연속 저장에도 한 번만 깜빡인다.
+function watchRenderer() {
+  const dir = path.join(__dirname, 'renderer');
+  let timer = null;
+  try {
+    fs.watch(dir, { recursive: true }, (_event, filename) => {
+      if (filename && !/\.(js|html|css)$/i.test(filename)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          console.log('[dev] renderer 변경 감지 → 새로고침', filename || '');
+          win.webContents.reloadIgnoringCache();
+        }
+      }, 120);
+    });
+    console.log('[dev] 핫리로드 켜짐 — src/renderer 감시 중');
+  } catch (err) {
+    console.log('[dev] 핫리로드 감시 실패:', err && err.message);
+  }
+}
+
 // 단일 인스턴스: 이미 금옥이가 켜져 있으면 새로 안 켜고 종료, 기존 금옥이를 보이게 함
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -371,6 +398,7 @@ if (!gotLock) {
     createWindow();
     createTray();
     watchStatus();
+    if (DEV) watchRenderer();
   });
 
   app.on('window-all-closed', () => app.quit());
