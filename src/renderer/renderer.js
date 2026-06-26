@@ -53,6 +53,10 @@ let temp = null;
 let walk = null;            // { phase, start, dur, dist, dir, moved }
 let nextWalk = now() + 1800 + Math.random() * 2600;
 
+// 쓰다듬기(더블클릭): 이 시각까지 눈 감고 머리 위로 하트가 뿅뿅 떠오른다
+let pettingUntil = 0;
+let nextHeart = 0;
+
 function say(category) {
   const list = MSG[category];
   if (!list || !list.length) return;
@@ -128,6 +132,8 @@ window.geumoki.onHitEdge((side) => {
 window.geumoki.onLanded((impact) => {
   falling = false;
   if (dragging) return;            // 떨어지는 도중 다시 잡았으면 무시
+  // 쓰다듬는 중이면 착지 표현(아야/물방울/퉁 찌부러짐)이 하트와 겹치지 않게 무시
+  if (pettingUntil && now() < pettingUntil) return;
   eyesClosedUntil = now() + 500;   // 땅에 닿은 뒤 0.5초간 눈 감김 유지
   if (impact >= 6) {               // 충분히 떨어졌을 때만 아파함
     bubbleEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
@@ -291,6 +297,45 @@ function drawDrops(t) {
   ctx.restore();
 }
 
+// ---- 쓰다듬기 하트(머리 위로 살랑살랑 떠오름) ----
+const hearts = [];
+function spawnHeart() {
+  const cx = GRID / 2;     // 머리 중앙
+  const cy = 92;           // 머리 위쪽
+  hearts.push({
+    x: cx + (Math.random() - 0.5) * 46,  // 머리 위 넓게 산발적으로
+    y: cy + (Math.random() - 0.5) * 18,
+    vx: (Math.random() - 0.5) * 0.6,
+    vy: -(0.5 + Math.random() * 0.5),    // 위로 살랑살랑
+    size: 10 + Math.random() * 6,        // 작게
+    born: now(),
+    life: 1000 + Math.random() * 600,
+    sway: Math.random() * Math.PI * 2,   // 좌우 흔들림 위상
+    swayAmp: 0.25 + Math.random() * 0.3, // 흔들림 폭도 제각각
+  });
+}
+function drawHearts(t) {
+  if (!hearts.length) return;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = hearts.length - 1; i >= 0; i--) {
+    const h = hearts[i];
+    const age = t - h.born;
+    if (age >= h.life) { hearts.splice(i, 1); continue; }
+    const p = age / h.life;
+    h.x += h.vx + Math.sin(t * 0.005 + h.sway) * h.swayAmp;  // 살랑살랑
+    h.y += h.vy;
+    h.vy *= 0.99;
+    // 톡 나타났다가(처음 20%) 서서히 사라짐
+    ctx.globalAlpha = p < 0.2 ? p / 0.2 : Math.max(0, 1 - (p - 0.2) / 0.8);
+    const s = h.size * (0.7 + 0.3 * Math.min(1, p * 4));  // 살짝 커지며
+    ctx.font = `${s.toFixed(1)}px serif`;
+    ctx.fillText('❤️', h.x, h.y);
+  }
+  ctx.restore();
+}
+
 // ---- 매 프레임 ----
 function tick() {
   frame++;
@@ -326,8 +371,16 @@ function tick() {
     if (Math.random() < 0.45) temp = { expr: 'normal', action: 'splash', until: t + 2000 };
   }
 
-  // 어슬렁(아주 가끔, 부드럽게)
-  if (!walk && t > nextWalk && !tilt && !falling) startWalk(t);
+  // 쓰다듬기: 눈 감고 가만히, 머리 위로 하트가 주기적으로 뿅뿅
+  const petting = pettingUntil && t < pettingUntil;
+  if (petting && t > nextHeart) {
+    spawnHeart();
+    if (Math.random() < 0.6) spawnHeart();   // 가끔 두 개씩 → 산발적으로 여러 개
+    nextHeart = t + 150 + Math.random() * 200;
+  }
+
+  // 어슬렁(아주 가끔, 부드럽게) — 쓰다듬는 중이거나 커서가 올라와 있으면 가만히 있는다
+  if (!walk && t > nextWalk && !tilt && !falling && !petting && !interactive) startWalk(t);
   let bob = walk ? stepWalk(t) : 0;
 
   // 표정/동작 확정
@@ -342,7 +395,7 @@ function tick() {
   //  - idle 'zzz...' 말풍선이 떠 있는 동안(자는 표정)
   // 그 외엔 평소처럼 깜빡임
   const sleeping = bubbleEl.classList.contains('show') && /zzz/i.test(bubbleEl.textContent);
-  const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil) || sleeping;
+  const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil) || sleeping || petting;
   const drawOpts = { expression: expr, action: act, frame, breathe, speed: tailSpeed };
   if (eyesClosed) drawOpts.holdFrame = CLOSED_FRAME;
   drawSeal(ctx, drawOpts);
@@ -350,6 +403,8 @@ function tick() {
   breatheBelly(breathe);
   // 물방울(잡았다 놓을 때 등)을 seal 위에 덧그림
   drawDrops(t);
+  // 쓰다듬을 때 머리 위로 떠오르는 하트
+  drawHearts(t);
 
   // 착지 '퉁' 찌부러짐: 닿는 순간 납작(가로로 퍼짐)했다가 출렁이며 원래대로.
   // (#seal transform-origin 이 바닥쪽이라 바닥에 눌리는 느낌이 난다)
@@ -440,6 +495,8 @@ window.addEventListener('mousemove', (e) => {
     window.geumoki.setInteractive(over);
     document.body.style.cursor = over ? 'grab' : 'default';
   }
+  // 쓰다듬으려 커서를 갖다 대면 멈춰서 가만히 → 움직이는 중에도 더블클릭이 안정적으로 들어감
+  if (over && walk) walk = null;
 });
 
 window.addEventListener('mousedown', (e) => {
@@ -466,5 +523,19 @@ window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     window.geumoki.contextMenu();
   }
+});
+// 더블클릭 = 쓰다듬기: 눈 감고 행복, 머리 위로 하트, 말풍선("히히", "따뜻해~" 등)
+window.addEventListener('dblclick', (e) => {
+  if (!overSeal(e.clientX, e.clientY)) return;
+  // 더블클릭 과정에서 잡기/떨어뜨리기가 걸렸어도 취소하고 가만히 쓰다듬받기
+  dragging = false;
+  falling = false;
+  walk = null;
+  eyesClosedUntil = 0;
+  landSquash = null;
+  pettingUntil = now() + 2600;
+  nextHeart = 0;                 // 즉시 첫 하트
+  temp = { expr: 'happy', action: 'none', until: pettingUntil };
+  say('pet');
 });
 })();
