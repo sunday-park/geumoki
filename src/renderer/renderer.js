@@ -42,6 +42,9 @@ const WORK_TAIL_SPEED = 1.5;
 let walk = null;            // { phase, start, dur, dist, ux, uy, sx, sy, oneway }
 let nextWalk = now() + 1800 + Math.random() * 2600;
 
+// 따라오기(우클릭 메뉴로 켜고 끔): main 이 커서 쪽으로 창을 옮기고, 여기선 방향/뒤뚱만 표현.
+let following = false, followMoving = false;
+
 // 쓰다듬기(더블클릭): 이 시각까지 눈 감고 머리 위로 하트가 뿅뿅 떠오른다
 let pettingUntil = 0;
 let pettingStart = 0;   // 쓰다듬기 시작 시각(시작할 때 딱 한 번 '출렁'용)
@@ -200,6 +203,18 @@ window.geumoki.onStatus((data) => {
   lastTs = data.ts;
   if (data.keyword) lastKeyword = data.keyword; // 새 키워드 올 때만 갱신(유지)
   react(data.state || 'idle');
+});
+
+// 따라오기 on/off (우클릭 메뉴)
+window.geumoki.onFollowMode((on) => {
+  following = !!on;
+  if (following) walk = null;       // 켜면 어슬렁 멈추고 따라가기 시작
+  else followMoving = false;
+});
+// main 이 커서 쪽으로 옮기며 보내주는 방향/이동 상태 → 바라보는 방향·뒤뚱에 반영
+window.geumoki.onFollowStep(({ dir, moving }) => {
+  followMoving = !!moving;
+  if (dir) setFacing(dir);          // 가는 방향을 바라봄
 });
 
 // ---- 부드러운 어슬렁 이동 ----
@@ -451,8 +466,10 @@ function tick() {
   }
 
   // 어슬렁(아주 가끔, 부드럽게) — 쓰다듬는 중이거나 커서가 올라와 있으면 가만히 있는다
-  if (!walk && t > nextWalk && t > restUntil && !falling && !petting && !interactive) startWalk(t);
+  if (!walk && t > nextWalk && t > restUntil && !falling && !petting && !interactive && !following) startWalk(t);
   let bob = walk ? stepWalk(t) : 0;
+  // 따라오는 중 이동할 때는 기어가는 느낌으로 살짝 뒤뚱
+  if (following && followMoving) bob = Math.abs(Math.sin(t * 0.012)) * 1.5;
 
   // 작업 중일 때만 꼬리를 조금 더 빠르게 파닥(끝나면 mode가 바뀌어 자동 원속도)
   const tailSpeed = (mode === 'working') ? WORK_TAIL_SPEED : 1;
@@ -508,7 +525,7 @@ function tick() {
 
   // 커서 쳐다보기: 쉬고 있을 때 가까이 온 커서 쪽을 바라본다(좌우 방향만, 기울이진 않음).
   // (걷거나·잡혀있거나·떨어지거나·쓰다듬받거나·대기 중이면 방향 그대로 둔다)
-  const idleForWatch = !walk && !dragging && !falling && !petting && mode !== 'waiting';
+  const idleForWatch = !walk && !dragging && !falling && !petting && !following && mode !== 'waiting';
   if (idleForWatch && pointerX !== null && t - pointerSeen < 600) {
     const rect = cv.getBoundingClientRect();
     const dxp = pointerX - (rect.left + rect.width / 2);     // +면 커서가 오른쪽

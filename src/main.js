@@ -308,6 +308,8 @@ ipcMain.on('drag-end', () => { grabOffset = null; dropToFloor(); });
 // renderer → main: 금옥이 우클릭 메뉴
 ipcMain.on('show-context-menu', () => {
   const menu = Menu.buildFromTemplate([
+    { label: '따라오기', type: 'checkbox', checked: followMode, click: () => setFollow(!followMode) },
+    { type: 'separator' },
     {
       label: hidden ? '금옥이 보이기' : '잠깐 숨기기',
       click: () => toggleHidden(),
@@ -323,6 +325,50 @@ function toggleHidden() {
   hidden = !hidden;
   if (hidden) win.hide();
   else win.show();
+}
+
+// ---- 따라오기(마우스 따라 느릿느릿 기어오기) ----
+// 켜면: 어슬렁을 멈추고, 전역 커서 위치를 향해 한 틱에 조금씩 창을 옮긴다.
+// 끄면: 타이머를 멈춰 평소처럼 어슬렁거린다.
+let followMode = false;
+let followTimer = null;
+let followDir = 0, followMoving = false;   // renderer 에 보낸 마지막 상태(바뀔 때만 전송)
+const FOLLOW_SPEED = 1.2;     // 한 틱(16ms)에 기어오는 px — 느릿느릿
+const FOLLOW_DEADZONE = 12;   // 커서와 이보다 가까우면 멈춤(덜덜거림 방지)
+
+function setFollow(v) {
+  followMode = v;
+  if (win && !win.isDestroyed()) win.webContents.send('follow-mode', v);
+  if (followTimer) { clearInterval(followTimer); followTimer = null; }
+  followDir = 0; followMoving = false;
+  if (v) followTimer = setInterval(followStep, 16);
+}
+
+function followStep() {
+  if (!win || win.isDestroyed() || !followMode || hidden) return;
+  if (grabOffset || dropTimer) return;     // 잡고 있거나 떨어지는 중엔 쉼
+  const c = screen.getCursorScreenPoint();
+  const [wx, wy] = win.getPosition();
+  const wa = screen.getDisplayNearestPoint(c).workArea;
+  // 금옥이 몸통(창 가운데)이 커서에 닿도록 목표 좌상단 = 커서 - 창중심
+  const dx = (c.x - W / 2) - wx;
+  const dy = (c.y - H / 2) - wy;
+  const dist = Math.hypot(dx, dy);
+  const moving = dist > FOLLOW_DEADZONE;
+  let dir = 0;
+  if (moving) {
+    const step = Math.min(FOLLOW_SPEED, dist);
+    const nx = clampX(wx + (dx / dist) * step, wa).x;
+    // 세로는 화면 위쪽~평소 쉬는 바닥 사이로 가둔다(작업표시줄 밑으론 안 내려감)
+    const ny = Math.max(wa.y, Math.min(wy + (dy / dist) * step, restY(wa)));
+    win.setBounds({ x: Math.round(nx), y: Math.round(ny), width: W, height: H });
+    if (Math.abs(dx) > 0.5) dir = dx < 0 ? -1 : 1;
+  }
+  // 방향/이동상태가 바뀔 때만 renderer 로 알림(매 프레임 IPC 도배 방지)
+  if (dir !== followDir || moving !== followMoving) {
+    followDir = dir; followMoving = moving;
+    win.webContents.send('follow-step', { dir, moving });
+  }
 }
 
 // 트레이 아이콘(작업표시줄 우측 알림영역)에서도 보이기/종료 가능

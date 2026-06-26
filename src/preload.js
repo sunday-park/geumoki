@@ -22,4 +22,7 @@ contextBridge.exposeInMainWorld('geumoki', {
   onLanded: (cb) => ipcRenderer.on('landed', (_e, impact, bounce) => cb(impact, bounce || 0)),
   // 우클릭 메뉴 띄우기
   contextMenu: () => ipcRenderer.send('show-context-menu'),
+  // 따라오기 on/off 토글 수신 + 따라가는 동안의 방향/이동 상태 수신
+  onFollowMode: (cb) => ipcRenderer.on('follow-mode', (_e, on) => cb(on)),
+  onFollowStep: (cb) => ipcRenderer.on('follow-step', (_e, s) => cb(s || {})),
 });
