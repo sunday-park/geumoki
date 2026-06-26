@@ -41,6 +41,7 @@ let facing = 1;
 let falling = false;        // 손에서 놓여 바닥으로 떨어지는 중(착지 전까지 어슬렁 멈춤)
 let landSquash = null;      // 착지 '퉁' 찌부러짐 효과 { start, dur, amp }
 let eyesClosedUntil = 0;    // 착지 후 이 시각까지 눈 감김 유지(떨어지는 동안엔 falling으로 유지)
+let restUntil = 0;          // 아프게 떨어진 뒤 이 시각까지 어슬렁 안 하고 가만히 있음
 
 // 작업 중(working/workingLong) 꼬리 파닥 속도. 1 = 평소, 1.5 = 1.5배 빠르게.
 // 작업이 끝나면(done/end/idle/waiting) 자동으로 1로 돌아온다.
@@ -55,6 +56,7 @@ let nextWalk = now() + 1800 + Math.random() * 2600;
 
 // 쓰다듬기(더블클릭): 이 시각까지 눈 감고 머리 위로 하트가 뿅뿅 떠오른다
 let pettingUntil = 0;
+let pettingStart = 0;   // 쓰다듬기 시작 시각(시작할 때 딱 한 번 '출렁'용)
 let nextHeart = 0;
 
 function say(category) {
@@ -144,6 +146,7 @@ window.geumoki.onLanded((impact, bounce) => {
       bubbleEl.classList.add('show');
       bubbleUntil = now() + 1600;
       splashDrops();               // 퉁! 하고 물방울이 튐
+      restUntil = now() + 1000;    // 아프니까 1초간 어슬렁 안 하고 가만히
     }
   }
 });
@@ -384,7 +387,7 @@ function tick() {
   }
 
   // 어슬렁(아주 가끔, 부드럽게) — 쓰다듬는 중이거나 커서가 올라와 있으면 가만히 있는다
-  if (!walk && t > nextWalk && !tilt && !falling && !petting && !interactive) startWalk(t);
+  if (!walk && t > nextWalk && t > restUntil && !tilt && !falling && !petting && !interactive) startWalk(t);
   let bob = walk ? stepWalk(t) : 0;
 
   // 표정/동작 확정
@@ -424,17 +427,25 @@ function tick() {
     }
   }
 
+  // 쓰다듬을 때: 좌우로만 잔잔히 떨림(가로 진동)은 계속, 출렁거림은 시작할 때 딱 한 번.
+  let petTrX = 0;
+  if (petting) {
+    const env = 0.55 + 0.45 * Math.sin(t * 0.005);   // ~1.3초 주기로 세기 완만히 출렁
+    petTrX = Math.sin(t * 0.02) * 0.7 * env;         // 좌우 떨림(~3Hz)만 — 계속
+
+    // 출렁: 쓰다듬기 시작 순간 한 번만 젤리처럼 출렁이고 잦아든다(감쇠 진동)
+    const e = (t - pettingStart) / 600;              // 출렁 지속 ~0.6초
+    if (e >= 0 && e < 1) {
+      const wob = Math.sin(e * Math.PI * 2) * (1 - e) * 0.06;  // 한 번 늘었다 줄며 사라짐
+      sy *= 1 + wob;
+      sx *= 1 - wob * 0.5;                           // 부피 보존 느낌으로 가로는 살짝 반대로
+    }
+  }
+
   // 변형: 방향 + 착지 찌부러짐 + 뒤뚱 (숨쉬기는 위 배 타원에서 처리)
   let tf = `scaleX(${(facing * sx).toFixed(4)}) scaleY(${sy.toFixed(4)})`;
   if (bob) tf += ` translateY(${(-bob).toFixed(2)}px)`;
-  // 쓰다듬을 때 몸을 잔잔하게 떪 — 핸드폰 진동처럼 빠르지 않게(저주파 ~3Hz),
-  // 느린 엔벨로프로 떨림 세기가 완만히 출렁여 자연스러운 '부르르~' 느낌
-  if (petting) {
-    const env = 0.55 + 0.45 * Math.sin(t * 0.005);     // ~1.3초 주기로 세기 출렁
-    const trX = Math.sin(t * 0.02) * 0.7 * env;        // 가로 ~3.2Hz
-    const trY = Math.sin(t * 0.016 + 1.1) * 0.5 * env; // 세로 ~2.5Hz
-    tf += ` translate(${trX.toFixed(2)}px, ${trY.toFixed(2)}px)`;
-  }
+  if (petTrX) tf += ` translateX(${petTrX.toFixed(2)}px)`;
   cv.style.transform = tf;
 
   requestAnimationFrame(tick);
@@ -546,6 +557,7 @@ window.addEventListener('dblclick', (e) => {
   eyesClosedUntil = 0;
   landSquash = null;
   pettingUntil = now() + 2600;
+  pettingStart = now();          // 시작할 때 한 번 출렁
   nextHeart = 0;                 // 즉시 첫 하트
   temp = { expr: 'happy', action: 'none', until: pettingUntil };
   say('pet');
