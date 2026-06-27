@@ -248,6 +248,13 @@ function startWalk(t) {
   // 작업 중이든 아니든 좌우로 어슬렁, 가끔 위·대각선으로도 조금씩.
   let ux, uy, dist, oneway = false;
   const r = Math.random();
+  if (r < 0.08) {
+    // 미끄럼(가끔): 한쪽으로 주르륵 멀리 미끄러졌다가 다시 주르륵 돌아온다(얼음 지치듯, 뒤뚱 없이).
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    walk = { phase: 'out', start: t, dur: 1000, dist: 230 + Math.random() * 170, ux: dir, uy: 0, slide: true };
+    setFacing(dir);
+    return;
+  }
   if (r < 0.6) {
     // 좌우 어슬렁: 제자리로 안 돌아오고 그 방향으로 슬슬 흘러간다(벽에 닿으면 반대로).
     const dir = Math.random() < 0.5 ? -1 : 1;
@@ -272,7 +279,7 @@ function stepWalk(t) {
   if (!walk) return 0;
   const el = t - walk.start;
   if (walk.phase === 'pause') {
-    if (el > 900) { walk.phase = 'back'; walk.start = t; walk.sx = 0; walk.sy = 0; setFacing(-walk.ux); }
+    if (el > (walk.slide ? 400 : 900)) { walk.phase = 'back'; walk.start = t; walk.sx = 0; walk.sy = 0; setFacing(-walk.ux); }
     return 0;
   }
   const p = clamp(el / walk.dur, 0, 1);
@@ -294,8 +301,8 @@ function stepWalk(t) {
       else { walk.phase = 'pause'; walk.start = t; }
     } else { walk = null; facing = 1; nextWalk = t + 2200 + Math.random() * 3000; }
   }
-  // 걷는 동안만 살짝 뒤뚱(위아래)
-  return Math.abs(Math.sin(el * 0.012)) * 1.5;
+  // 걷는 동안만 살짝 뒤뚱(위아래). 미끄러질 땐 얼음 지치듯 평평하게(뒤뚱 0).
+  return (walk && walk.slide) ? 0 : Math.abs(Math.sin(el * 0.012)) * 1.5;
 }
 
 // ---- 복부(지느러미 사이 타원)만 숨쉬기 ----
