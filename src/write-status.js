@@ -6,7 +6,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
+// 메모지 경로는 status-path.js 한 곳에서만 정의한다(DRY). 여기서 재정의하지 않는다.
+// require()는 cwd가 아니라 이 스크립트 위치 기준으로 해석되므로, 훅이 절대경로로
+// standalone 실행해도 항상 같은 모듈을 가리킨다.
+const { DIR, STATUS_FILE } = require('./status-path');
 
 // 영어 용어/동사 → 한국어 (예: rendering→렌더링, install→설치).
 // npm·git·node 같은 도구 고유명은 그대로 둔다.
@@ -172,8 +175,8 @@ function finish() {
   if (finished) return;
   finished = true;
 
-  const dir = path.join(os.homedir(), '.claude', 'geumoki');
-  const file = path.join(dir, 'status.json');
+  const dir = DIR;
+  const file = STATUS_FILE;
 
   // 직전 '요청 키워드(req)'를 이어받는다. 도구 이벤트가 연달아 와도
   // 요청 맥락은 유지하면서 '지금 하는 작업(tool)'만 갱신하기 위함.
