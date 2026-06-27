@@ -7,7 +7,8 @@
     "start": "electron .",
     "dev": "set GEUMOKI_DEV=1&& electron .",
     "install-hooks": "node src/install-hooks.js",
-    "uninstall-hooks": "node src/install-hooks.js --remove"
+    "uninstall-hooks": "node src/install-hooks.js --remove",
+    "test": "node --test"
   },
   "author": "",
   "license": "MIT",
