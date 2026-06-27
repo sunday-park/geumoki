@@ -129,10 +129,15 @@ function bashKeyword(cmd) {
 function bashFailed(ev) {
   const r = ev && ev.tool_response;
   if (r == null) return false;
+  // CC 2.1.x에서 '성공'은 객체({stdout,stderr,exitCode:0,interrupted})로,
+  // '실패'는 문자열("Error: Exit code 1\n...")로 온다. 둘 다 본다.
+  if (typeof r === 'string') {
+    return /^Error\b/i.test(r) || /exit code\s+[1-9]/i.test(r);
+  }
   if (typeof r === 'object') {
     if (r.interrupted === true) return true;        // 중단도 실패로 취급
-    for (const k of ['exit_code', 'exitCode', 'return_code', 'returncode', 'code', 'status']) {
-      if (typeof r[k] === 'number') return r[k] !== 0;
+    for (const k of ['exitCode', 'exit_code', 'return_code', 'returncode', 'code', 'status']) {
+      if (typeof r[k] === 'number') return r[k] !== 0;  // 버전 따라 객체에 코드가 실릴 수도
     }
     if (r.is_error === true || r.isError === true || r.success === false) return true;
   }
