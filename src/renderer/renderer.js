@@ -16,6 +16,12 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const smooth = (p) => p * p * (3 - 2 * p); // 부드러운 가속·감속
 
+// 밤/낮 반응용 시계. 밤엔 졸려하고(zzz), 아침 첫 세션엔 기지개를 켠다.
+const hourNow = () => new Date().getHours();
+const isNight = () => { const h = hourNow(); return h >= 22 || h < 6; };
+const isMorning = () => { const h = hourNow(); return h >= 6 && h < 11; };
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+
 let lastTs = 0;
 let lastActivity = now();
 let mode = 'idle';
@@ -59,6 +65,19 @@ function celebrateDone() {
   hop = null;
   hopsLeft = 2;         // 두 번 높이 콩콩
   nextHopAt = now();    // 곧바로 첫 점프
+}
+
+// 아침(6~11시) 첫 세션이면 기지개 한 번(살짝 위로 쭉). 하루 한 번만.
+let stretch = null;        // 기지개 애니메이션 { start, dur }
+let lastStretchDay = null; // 오늘 이미 기지개 했는지(날짜 문자열)
+function maybeMorningStretch() {
+  if (!isMorning()) return false;
+  if (todayStr() === lastStretchDay) return false;
+  lastStretchDay = todayStr();
+  walk = null; hop = null; hopsLeft = 0;
+  stretch = { start: now(), dur: 1000 };
+  say('morning');
+  return true;
 }
 
 // 커서 쳐다보기: 가까이 온 마우스 쪽을 바라본다(좌우 방향 전환만).
@@ -138,7 +157,7 @@ function react(state) {
   lastActivity = now();
   switch (state) {
     case 'start':
-      say('start');
+      if (!maybeMorningStretch()) say('start');  // 아침 첫 세션이면 기지개+대사, 아니면 평소 인사
       break;
     case 'working':
       workingSince = now();
@@ -443,11 +462,13 @@ function tick() {
     nextWorkingChat = t + 7000 + Math.random() * 5000;
   }
 
-  // 한참 조용하면 심심
+  // 한참 조용하면 심심 — 밤(22~6시)엔 더 빨리, 더 자주 졸려한다(zzz).
+  const idleGap = isNight() ? 25000 : 40000;
   const idleNow = (mode === 'idle' || mode === 'done' || mode === 'end')
-    && (t - lastActivity > 40000);
+    && (t - lastActivity > idleGap);
   if (idleNow && t > nextIdleChat) {
-    say('idle');
+    if (isNight() && Math.random() < 0.7) say('sleepy');  // 밤엔 70% 확률로 졸린 대사
+    else say('idle');
     nextIdleChat = t + 15000 + Math.random() * 15000;
   }
 
@@ -479,7 +500,7 @@ function tick() {
   //  - 떨어지는 동안 + 착지 후 0.5초
   //  - idle 'zzz...' 말풍선이 떠 있는 동안(자는 표정)
   // 그 외엔 평소처럼(스프라이트시트에 구워진 깜빡임이 돈다)
-  const sleeping = bubbleEl.classList.contains('show') && /zzz/i.test(bubbleEl.textContent);
+  const sleeping = bubbleEl.classList.contains('show') && /zzz|쿨쿨|새근|꿈나라/i.test(bubbleEl.textContent);
   const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil) || sleeping || petting;
   // 자는(zzz) 동안에는 프레임 고정(꼬리 살랑 정지)뿐 아니라 배 숨쉬기 출렁임도 멈춰
   // 완전히 가만히 잔다 — 자는 대사가 사라지면 다시 평소처럼 살랑·숨쉬기 복귀.
@@ -522,6 +543,17 @@ function tick() {
       const wob = Math.sin(e * Math.PI * 2) * (1 - e) * 0.06;  // 한 번 늘었다 줄며 사라짐
       sy *= 1 + wob;
       sx *= 1 - wob * 0.5;                           // 부피 보존 느낌으로 가로는 살짝 반대로
+    }
+  }
+
+  // 아침 기지개: 바닥을 딛고 위로 쭉 늘어났다가(scaleY↑) 스르륵 돌아온다.
+  if (stretch) {
+    const e = (t - stretch.start) / stretch.dur;
+    if (e >= 1) stretch = null;
+    else {
+      const env = Math.sin(e * Math.PI);   // 0→1→0 (한 번 쭉 폈다 돌아옴)
+      sy *= 1 + 0.13 * env;                // 위로 쭉
+      sx *= 1 - 0.05 * env;                // 가로는 살짝 좁게(부피 보존 느낌)
     }
   }
 
