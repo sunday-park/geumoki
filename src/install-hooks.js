@@ -19,6 +19,7 @@ const MAP = {
   SessionStart: 'start',
   UserPromptSubmit: 'working',
   PreToolUse: 'busy',       // 도구 사용 시점 — 무슨 작업인지 키워드 갱신
+  PostToolUse: 'busy',      // 도구 끝난 시점 — Bash면 종료코드로 성공/실패(err) 갱신
   Stop: 'done',
   Notification: 'waiting',
   SessionEnd: 'end',
@@ -67,6 +68,10 @@ function main() {
       // 도구 이벤트는 matcher로 자주 쓰는 도구에만 (Read/Grep 등 너무 잦은 호출 제외)
       if (event === 'PreToolUse') {
         entry.matcher = 'Edit|MultiEdit|Write|Bash|Task|NotebookEdit';
+      }
+      // 끝난 시점은 Bash만 — 종료코드로 실패 감지(다른 도구는 굳이 매번 안 봄)
+      if (event === 'PostToolUse') {
+        entry.matcher = 'Bash';
       }
       cleaned.push(entry);
     }

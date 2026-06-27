@@ -123,6 +123,22 @@ function bashKeyword(cmd) {
   return sub ? `${koreanizeWord(prog)} ${koreanizeWord(sub)}` : koreanizeWord(prog);
 }
 
+// PostToolUse(Bash) 이벤트에서 '실패(0이 아닌 종료코드)'를 판정한다.
+// Claude Code가 tool_response에 어떤 형태로 종료코드를 주는지 버전마다 달라
+// 흔한 필드명을 두루 방어적으로 살핀다. (GEUMOKI_DEBUG=1이면 실제 형태를 로그로 남겨 튜닝 가능)
+function bashFailed(ev) {
+  const r = ev && ev.tool_response;
+  if (r == null) return false;
+  if (typeof r === 'object') {
+    if (r.interrupted === true) return true;        // 중단도 실패로 취급
+    for (const k of ['exit_code', 'exitCode', 'return_code', 'returncode', 'code', 'status']) {
+      if (typeof r[k] === 'number') return r[k] !== 0;
+    }
+    if (r.is_error === true || r.isError === true || r.success === false) return true;
+  }
+  return false;
+}
+
 // 도구 사용 이벤트 → '지금 실제로 하는 작업' 키워드 (예: renderer.js 수정, npm 설치)
 function toolKeyword(ev) {
   if (!ev || typeof ev !== 'object') return '';
@@ -156,10 +172,11 @@ function finish() {
 
   // 직전 '요청 키워드(req)'를 이어받는다. 도구 이벤트가 연달아 와도
   // 요청 맥락은 유지하면서 '지금 하는 작업(tool)'만 갱신하기 위함.
-  let req = '', tool = '';
+  let req = '', tool = '', err = false;
   try {
     const prev = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (prev && typeof prev.req === 'string') req = prev.req;
+    if (prev && typeof prev.err === 'boolean') err = prev.err; // 직전 작업의 실패 여부 이어받기
   } catch {
     // 기존 파일 없음/깨짐 — req 없이 진행
   }
@@ -172,10 +189,23 @@ function finish() {
         if (!isSyntheticPrompt(ev.prompt)) {  // 시스템 합성 프롬프트(task-notification 등)는 무시
           req = keywordsFromPrompt(ev.prompt); // 실제 요청만 키워드 갱신, 작업 초기화
           tool = '';
+          err = false;                  // 새 요청 시작 → 실패 플래그 리셋
         }
         // 합성 프롬프트면 직전 실제 요청 맥락(req)을 그대로 유지
       } else if (ev) {                  // 도구 사용 → 작업만 갱신, 요청 키워드는 유지
         tool = toolKeyword(ev);
+        // PostToolUse(Bash)에는 tool_response가 실려온다 → 가장 최근 Bash의 성공/실패로 갱신.
+        // (PreToolUse엔 tool_response가 없어 err는 그대로 유지)
+        if (ev.tool_name === 'Bash' && ev.tool_response !== undefined) {
+          err = bashFailed(ev);
+          if (process.env.GEUMOKI_DEBUG) {
+            try {
+              fs.mkdirSync(dir, { recursive: true });
+              fs.appendFileSync(path.join(dir, 'bash-debug.log'),
+                JSON.stringify({ at: Date.now(), failed: err, resp: ev.tool_response }).slice(0, 2000) + '\n');
+            } catch { /* 디버그 실패는 무시 */ }
+          }
+        }
       }
     }
   } catch {
@@ -183,14 +213,14 @@ function finish() {
   }
 
   // 세션이 새로 시작되면 직전 세션의 요청 맥락은 비운다.
-  if (state === 'start') { req = ''; tool = ''; }
+  if (state === 'start') { req = ''; tool = ''; err = false; }
 
   // 짧은 요청 키워드 + 실제 작업 중인 것을 섞어서 표시
   const keyword = (req && tool) ? `${req} · ${tool}` : (req || tool || '');
 
   try {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ state, ts: Date.now(), keyword, req, tool }), 'utf8');
+    fs.writeFileSync(file, JSON.stringify({ state, ts: Date.now(), keyword, req, tool, err }), 'utf8');
   } catch {
     // 무시 — 금옥이 때문에 Claude Code가 멈추는 일은 없어야 한다
   }
@@ -214,4 +244,4 @@ try {
 if (require.main === module) runCli();
 
 // 키워드 추출 규칙을 테스트에서 검증할 수 있게 순수 함수만 내보낸다.
-module.exports = { keywordsFromPrompt, bashKeyword, toolKeyword, koreanizeWord, isSyntheticPrompt };
+module.exports = { keywordsFromPrompt, bashKeyword, toolKeyword, koreanizeWord, isSyntheticPrompt, bashFailed };

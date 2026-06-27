@@ -80,6 +80,18 @@ function maybeMorningStretch() {
   return true;
 }
 
+// 실패 감지: 작업 중 Bash가 0이 아닌 종료코드로 끝났으면(메모지 err=true)
+// done에서 콩콩 대신 '시무룩'(축 처짐 + 머리 위 💢 + "앗 실패했어…").
+let lastErr = false;       // 직전 작업에 에러가 있었는지(메모지 err 반영)
+let sadUntil = 0;          // 이 시각까지 시무룩(축 처짐) 모션
+const SAD_DUR = 2200;
+function sadDone() {
+  walk = null; hop = null; hopsLeft = 0;
+  sadUntil = now() + SAD_DUR;
+  say('failed');
+  bubbleUntil = now() + 4200;
+}
+
 // 커서 쳐다보기: 가까이 온 마우스 쪽을 바라본다(좌우 방향 전환만).
 // (창은 클릭 통과 상태에서도 forward:true 라 창 영역 안에서는 mousemove가 들어온다)
 let pointerX = null, pointerY = null;  // 마지막으로 본 커서 위치(창 기준 px)
@@ -165,8 +177,8 @@ function react(state) {
       say('working');
       break;
     case 'done':
-      say('done');
-      celebrateDone();   // 끝났다! 두 번 높이 콩콩
+      if (lastErr) sadDone();              // 에러로 끝남: 시무룩 + 💢
+      else { say('done'); celebrateDone(); }  // 잘 끝남: 두 번 높이 콩콩
       break;
     case 'waiting':
       say('waiting');
@@ -221,6 +233,7 @@ window.geumoki.onStatus((data) => {
   if (data.ts === lastTs) return;
   lastTs = data.ts;
   if (data.keyword) lastKeyword = data.keyword; // 새 키워드 올 때만 갱신(유지)
+  lastErr = !!data.err;                          // 직전 작업의 성공/실패(메모지에서)
   react(data.state || 'idle');
 });
 
@@ -452,6 +465,27 @@ function drawDizzyStar(t) {
   ctx.restore();
 }
 
+// ---- 실패했을 때 머리 위 💢(짜증 마크) ----
+function drawSad(t) {
+  if (!sadUntil || t >= sadUntil) return;
+  const remain = sadUntil - t;
+  const since = SAD_DUR - remain;
+  // 톡 나타났다가(처음 150ms) 끝물(마지막 400ms)에 서서히 사라짐
+  let alpha = 1;
+  if (since < 150) alpha = since / 150;
+  else if (remain < 400) alpha = remain / 400;
+  const x = GRID / 2 + 22;          // 머리 오른쪽 위
+  const y = 64;
+  const size = 30 + Math.sin(t * 0.02) * 3;  // 살짝 욱신
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.font = `${size.toFixed(1)}px serif`;
+  ctx.fillText('💢', x, y);
+  ctx.restore();
+}
+
 // ---- 매 프레임 ----
 function tick() {
   const t = now();
@@ -523,6 +557,8 @@ function tick() {
   drawHearts(t);
   // 흔들려서 어지러울 때 머리 위 큰 💫
   drawDizzyStar(t);
+  // 실패로 끝났을 때 머리 위 💢
+  drawSad(t);
 
   // 착지 '퉁' 찌부러짐: 닿는 순간 납작(가로로 퍼짐)했다가 출렁이며 원래대로.
   // (#seal transform-origin 이 바닥쪽이라 바닥에 눌리는 느낌이 난다)
@@ -564,6 +600,13 @@ function tick() {
     }
   }
 
+  // 시무룩(실패): 어깨가 축 처진 듯 살짝 납작하게 눌리고 힘없이 좌우로 흔들흔들.
+  let sadSway = 0;
+  if (sadUntil && t < sadUntil) {
+    sy *= 0.93; sx *= 1.04;                // 풀썩 처진 느낌
+    sadSway = Math.sin(t * 0.004) * 2;     // 힘없는 좌우(deg)
+  }
+
   // 커서 쳐다보기: 쉬고 있을 때 가까이 온 커서 쪽을 바라본다(좌우 방향만, 기울이진 않음).
   // (걷거나·잡혀있거나·떨어지거나·쓰다듬받거나·대기 중이면 방향 그대로 둔다)
   const idleForWatch = !walk && !dragging && !falling && !petting && !following && mode !== 'waiting';
@@ -592,6 +635,8 @@ function tick() {
   if (petTrX) tf += ` translateX(${petTrX.toFixed(2)}px)`;
   // 어지러우면 비틀비틀 좌우로 흔들(바닥 기준 ±4°, 흔들림 속도 아주 살짝 빠르게)
   if (dizzyUntil && t < dizzyUntil) tf += ` rotate(${(Math.sin(t * 0.013) * 4).toFixed(2)}deg)`;
+  // 시무룩하면 힘없이 좌우로(±2°)
+  else if (sadSway) tf += ` rotate(${sadSway.toFixed(2)}deg)`;
   cv.style.transform = tf;
 
   requestAnimationFrame(tick);
@@ -680,6 +725,7 @@ window.addEventListener('mousedown', (e) => {
     eyesClosedUntil = 0;// 다시 잡으면 눈 뜸
     resetShake();       // 흔들기 카운트 새로 시작
     landSquash = null;
+    sadUntil = 0;       // 잡아주면 시무룩 그만
     hop = null; hopsLeft = 0;   // 콩콩 중이었어도 잡으면 멈춤
     document.body.style.cursor = 'grabbing';
     window.geumoki.dragStart();
@@ -709,6 +755,7 @@ window.addEventListener('dblclick', (e) => {
   walk = null;
   eyesClosedUntil = 0;
   landSquash = null;
+  sadUntil = 0;                  // 쓰다듬어주면 시무룩 풀림
   hop = null; hopsLeft = 0;       // 콩콩 중이었어도 쓰다듬으면 멈춤
   pettingUntil = now() + 2600;
   pettingStart = now();          // 시작할 때 한 번 출렁
