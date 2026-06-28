@@ -30,13 +30,13 @@
       transform: translate(-20px, 20px) scale(0.9);  /* 금옥이 쪽으로 왼쪽 아래로 */
       transform-origin: bottom center;
       padding: 7px 12px;
-      /* 아이보리 — 거의 흰색, 아주 살짝만 따뜻한 기 */
-      background: linear-gradient(180deg, #ffffff 0%, #f7f4ec 100%);
-      color: #3a3631;
+      /* 하늘빛 도는 흰색 — 거의 흰색, 아주 살짝만 차가운 기 */
+      background: linear-gradient(180deg, #ffffff 0%, #eef4fb 100%);
+      color: #2f3438;
       font: 13px/1.35 "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
-      border: 1.5px solid rgba(208, 200, 182, 0.55);
+      border: 1.5px solid rgba(170, 195, 225, 0.55);
       border-radius: 14px;
-      box-shadow: 0 5px 16px rgba(70, 64, 50, 0.22);   /* 부드러운 중립 그림자 */
+      box-shadow: 0 5px 16px rgba(90, 140, 200, 0.35);   /* 하늘색 그림자 */
       text-align: center;
       white-space: normal;         /* 길면 여러 줄로 줄바꿈(한 줄 잘림 방지) */
       word-break: keep-all;        /* 한국어 단어는 단어 단위로 줄바꿈 */
@@ -54,7 +54,7 @@
       bottom: -8px;
       transform: translateX(-50%);
       border: 7px solid transparent;
-      border-top-color: rgba(208, 200, 182, 0.55);
+      border-top-color: rgba(170, 195, 225, 0.55);
       border-bottom: 0;
     }
     #bubble::after {
@@ -64,7 +64,7 @@
       bottom: -6px;
       transform: translateX(-50%);
       border: 6px solid transparent;
-      border-top-color: #f7f4ec;     /* 말풍선 아래쪽 색과 맞춤 */
+      border-top-color: #eef4fb;     /* 말풍선 아래쪽 색과 맞춤 */
       border-bottom: 0;
     }
     #bubble.show { opacity: 1; transform: translate(-20px, 20px) scale(1); }
