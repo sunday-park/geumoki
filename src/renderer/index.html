@@ -26,21 +26,36 @@
     /* 말풍선 */
     #bubble {
       max-width: 200px;            /* 창(240px) 안에서 안 잘리게 */
-      margin-bottom: 6px;
-      transform: translate(-20px, 20px);  /* 금옥이 쪽으로 왼쪽 아래로 */
-      padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.96);
+      margin-bottom: 8px;
+      transform: translate(-20px, 20px) scale(0.9);  /* 금옥이 쪽으로 왼쪽 아래로 */
+      transform-origin: bottom center;
+      padding: 7px 12px;
+      /* 위는 하얗고 아래는 살짝 하늘빛 — 도톰한 느낌 */
+      background: linear-gradient(180deg, #ffffff 0%, #eef5fb 100%);
       color: #2b2f33;
-      font: 13px/1.3 "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
-      border-radius: 12px;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);   /* 그림자 진하게 */
+      font: 13px/1.35 "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
+      border: 1.5px solid rgba(125, 175, 215, 0.55);
+      border-radius: 14px;
+      box-shadow: 0 5px 16px rgba(40, 70, 110, 0.32);   /* 살짝 푸른 그림자 */
       text-align: center;
       white-space: normal;         /* 길면 여러 줄로 줄바꿈(한 줄 잘림 방지) */
       word-break: keep-all;        /* 한국어 단어는 단어 단위로 줄바꿈 */
       overflow-wrap: anywhere;     /* 아주 긴 토큰은 강제 줄바꿈 */
       opacity: 0;
-      transition: opacity 0.25s ease;
+      /* 뿅 하고 떠오르듯(살짝 오버슈트) */
+      transition: opacity 0.2s ease, transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
       position: relative;
+    }
+    /* 꼬리: 테두리(아래·살짝 큼) 위에 채움(작음)을 겹쳐 윤곽선이 보이게 */
+    #bubble::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      transform: translateX(-50%);
+      border: 7px solid transparent;
+      border-top-color: rgba(125, 175, 215, 0.55);
+      border-bottom: 0;
     }
     #bubble::after {
       content: "";
@@ -49,10 +64,17 @@
       bottom: -6px;
       transform: translateX(-50%);
       border: 6px solid transparent;
-      border-top-color: rgba(255, 255, 255, 0.96);
+      border-top-color: #eef5fb;     /* 말풍선 아래쪽 색과 맞춤 */
       border-bottom: 0;
     }
-    #bubble.show { opacity: 1; }
+    #bubble.show { opacity: 1; transform: translate(-20px, 20px) scale(1); }
+    /* 말풍선 앞 도구 아이콘(작업 중일 때만 들어감) */
+    #bubbleIcon {
+      font-size: 15px;
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+    #bubbleIcon:empty { margin: 0; }   /* 아이콘 없으면 여백도 없이 평범하게 */
     /* 금옥이 본체: 부드러운 아이들 애니메이션 재생 (현재 크기에서 15% 축소) */
     #seal {
       width: 162px;
@@ -63,7 +85,7 @@
 </head>
 <body>
   <div id="stage">
-    <div id="bubble"></div>
+    <div id="bubble"><span id="bubbleIcon"></span><span id="bubbleText"></span></div>
     <canvas id="seal" width="220" height="220"></canvas>
   </div>
   <script src="messages.js"></script>

@@ -10,6 +10,8 @@ const MSG = window.GEUMOKI_MESSAGES;
 const cv = document.getElementById('seal');
 const ctx = cv.getContext('2d', { willReadFrequently: true });
 const bubbleEl = document.getElementById('bubble');
+const bubbleIconEl = document.getElementById('bubbleIcon');  // 말풍선 앞 도구 아이콘 칸
+const bubbleTextEl = document.getElementById('bubbleText');  // 말풍선 글자 칸
 
 const now = () => performance.now();
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -92,8 +94,8 @@ function sadDone() {
   bubbleUntil = now() + 4200;
 }
 
-// 작업 도구 아이콘: 작업 중(working) 머리 위에 '지금 쓰는 도구' 이모지가 둥실 떠오른다.
-// 메모지의 toolName(원래 도구 이름)을 이모지로 매핑. 작업이 끝나거나 도구가 없으면 스르륵 사라짐.
+// 작업 도구 아이콘: 작업 중(working)일 때 말풍선 앞에 '지금 쓰는 도구' 이모지를 붙인다.
+// 메모지의 toolName(원래 도구 이름)을 이모지로 매핑.
 const TOOL_ICON = {
   Read: '📖', Edit: '✏️', MultiEdit: '✏️', Write: '📝',
   Grep: '🔍', Glob: '📁', Bash: '⌨️', Task: '🤖',
@@ -101,9 +103,6 @@ const TOOL_ICON = {
 };
 const TOOL_ICON_DEFAULT = '⚙️';
 let toolName = '';         // 현재 도구 이름(메모지에서)
-let toolIconAlpha = 0;     // 0~1 페이드(부드러운 등장/퇴장)
-let shownToolEmoji = '';   // 지금 그리고 있는 이모지(바뀌면 '톡' 교체 효과)
-let toolSwapAt = 0;        // 마지막으로 아이콘이 바뀐 시각
 
 // 커서 쳐다보기: 가까이 온 마우스 쪽을 바라본다(좌우 방향 전환만).
 // (창은 클릭 통과 상태에서도 forward:true 라 창 영역 안에서는 mousemove가 들어온다)
@@ -172,9 +171,17 @@ function say(category) {
     const plain = list.filter((s) => !s.includes('{kw}'));
     text = pick(plain.length ? plain : list);
   }
-  bubbleEl.textContent = text.replace(/\{kw\}/g, lastKeyword).trim();
+  bubbleTextEl.textContent = text.replace(/\{kw\}/g, lastKeyword).trim();
+  updateBubbleIcon();           // 이 말풍선에 맞는 도구 아이콘(작업 중일 때만) 반영
   bubbleEl.classList.add('show');
   bubbleUntil = now() + 5500;   // 말풍선 지속시간(조금 늘림)
+}
+
+// 말풍선 앞 도구 아이콘: 작업 중(working)이고 도구가 있을 때만 이모지를 넣는다.
+// 그 외(인사·완료·졸림·쓰다듬 등)엔 비워서 평범한 말풍선으로.
+function updateBubbleIcon() {
+  const emoji = (mode === 'working' && toolName) ? (TOOL_ICON[toolName] || TOOL_ICON_DEFAULT) : '';
+  if (bubbleIconEl.textContent !== emoji) bubbleIconEl.textContent = emoji;
 }
 
 function react(state) {
@@ -232,7 +239,8 @@ window.geumoki.onLanded((impact, bounce) => {
     landSquash = { start: now(), dur: 360, amp: clamp(impact / 90, 0.10, 0.28) };
     // 아파함/물방울은 '높이 떨어졌을 때(첫 큰 충격)'만 — 낮게 떨구면 아야 안 함
     if (bounce === 0 && impact >= HURT_IMPACT) {
-      bubbleEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
+      bubbleTextEl.textContent = pick(MSG.hurt || ['아야!']);  // 대사는 messages.js의 hurt에서
+      bubbleIconEl.textContent = '';                            // 아야!엔 도구 아이콘 없이
       bubbleEl.classList.add('show');
       bubbleUntil = now() + 1600;
       splashDrops();               // 퉁! 하고 물방울이 튐
@@ -395,6 +403,20 @@ function splashDrops(n) {
     });
   }
 }
+// ---- 이모지 오버레이 한 글자 그리기(머리 위 💫/💢/도구 아이콘 등) ----
+// save/restore로 감싸 부수효과를 격리한다 — center/middle 정렬 + alpha + serif 폰트.
+// (💧·❤️처럼 루프로 매 프레임 수십 개 찍는 쪽은 save를 루프 밖에 한 번만 두는
+//  구조라 이 헬퍼를 쓰지 않는다. 여긴 '한 글자' 전용.)
+function drawEmoji(emoji, x, y, size, alpha) {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.font = `${size.toFixed(1)}px serif`;
+  ctx.fillText(emoji, x, y);
+  ctx.restore();
+}
+
 function drawDrops(t) {
   if (!drops.length) return;
   ctx.save();
@@ -470,13 +492,7 @@ function drawDizzyStar(t) {
   const x = GRID / 2 + Math.cos(a) * 12;     // 머리 위에서 작은 원을 그리며
   const y = 60 + Math.sin(a) * 6;            // 머리 위(캔버스 위쪽)
   const size = 40 + Math.sin(t * 0.01) * 4;  // 크게, 살짝 맥동
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.globalAlpha = clamp(alpha, 0, 1);
-  ctx.font = `${size.toFixed(1)}px serif`;
-  ctx.fillText('💫', x, y);
-  ctx.restore();
+  drawEmoji('💫', x, y, size, alpha);
 }
 
 // ---- 실패했을 때 머리 위 💢(짜증 마크) ----
@@ -491,36 +507,7 @@ function drawSad(t) {
   const x = GRID / 2 + 22;          // 머리 오른쪽 위
   const y = 64;
   const size = 30 + Math.sin(t * 0.02) * 3;  // 살짝 욱신
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.globalAlpha = clamp(alpha, 0, 1);
-  ctx.font = `${size.toFixed(1)}px serif`;
-  ctx.fillText('💢', x, y);
-  ctx.restore();
-}
-
-// ---- 작업 도구 아이콘(머리 위 둥실) ----
-// want = 지금 띄울 이모지('' 면 숨김). 부드러운 페이드 + 도구 바뀌면 '톡' 교체.
-function drawToolIcon(t, want) {
-  if (want && want !== shownToolEmoji) { shownToolEmoji = want; toolSwapAt = t; }
-  const targetA = want ? 1 : 0;
-  toolIconAlpha += (targetA - toolIconAlpha) * 0.18;          // 프레임 기반 부드러운 보간
-  if (targetA === 0 && toolIconAlpha < 0.02) { toolIconAlpha = 0; shownToolEmoji = ''; }
-  if (toolIconAlpha <= 0.01 || !shownToolEmoji) return;
-
-  const bob = Math.sin(t * 0.004) * 4;                         // 둥실 위아래
-  const since = t - toolSwapAt;
-  const pop = since < 240 ? 1 + 0.30 * Math.sin((since / 240) * Math.PI) : 1; // 교체 직후 '톡'
-  const x = GRID / 2;
-  const y = 52 + bob;                                          // 머리 위(💢/💫보다 살짝 위)
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.globalAlpha = clamp(toolIconAlpha, 0, 1);
-  ctx.font = `${(30 * pop).toFixed(1)}px serif`;
-  ctx.fillText(shownToolEmoji, x, y);
-  ctx.restore();
+  drawEmoji('💢', x, y, size, alpha);
 }
 
 // ---- 매 프레임 ----
@@ -578,7 +565,7 @@ function tick() {
   //  - 떨어지는 동안 + 착지 후 0.5초
   //  - idle 'zzz...' 말풍선이 떠 있는 동안(자는 표정)
   // 그 외엔 평소처럼(스프라이트시트에 구워진 깜빡임이 돈다)
-  const sleeping = bubbleEl.classList.contains('show') && /zzz|쿨쿨|새근|꿈나라/i.test(bubbleEl.textContent);
+  const sleeping = bubbleEl.classList.contains('show') && /zzz|쿨쿨|새근|꿈나라/i.test(bubbleTextEl.textContent);
   const eyesClosed = falling || (eyesClosedUntil && t < eyesClosedUntil) || sleeping || petting;
   // 자는(zzz) 동안에는 프레임 고정(꼬리 살랑 정지)뿐 아니라 배 숨쉬기 출렁임도 멈춰
   // 완전히 가만히 잔다 — 자는 대사가 사라지면 다시 평소처럼 살랑·숨쉬기 복귀.
@@ -596,10 +583,6 @@ function tick() {
   drawDizzyStar(t);
   // 실패로 끝났을 때 머리 위 💢
   drawSad(t);
-  // 작업 중이면 머리 위에 '지금 쓰는 도구' 아이콘(쓰다듬기/어지러움/시무룩/잘 때는 양보)
-  const showTool = mode === 'working' && toolName && !petting
-    && !(dizzyUntil && t < dizzyUntil) && !(sadUntil && t < sadUntil) && !sleeping;
-  drawToolIcon(t, showTool ? (TOOL_ICON[toolName] || TOOL_ICON_DEFAULT) : '');
 
   // 착지 '퉁' 찌부러짐: 닿는 순간 납작(가로로 퍼짐)했다가 출렁이며 원래대로.
   // (#seal transform-origin 이 바닥쪽이라 바닥에 눌리는 느낌이 난다)
