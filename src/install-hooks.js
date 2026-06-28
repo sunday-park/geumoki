@@ -65,9 +65,10 @@ function main() {
           },
         ],
       };
-      // 도구 이벤트는 matcher로 자주 쓰는 도구에만 (Read/Grep 등 너무 잦은 호출 제외)
+      // 도구 이벤트는 머리 위 '작업 도구 아이콘'에 쓰려고 자주 쓰는 도구를 두루 잡는다.
+      // (Read/Grep/Glob도 포함 — 그래야 📖🔍📁 아이콘이 실제로 뜬다)
       if (event === 'PreToolUse') {
-        entry.matcher = 'Edit|MultiEdit|Write|Bash|Task|NotebookEdit';
+        entry.matcher = 'Read|Edit|MultiEdit|Write|Bash|Task|NotebookEdit|Grep|Glob|WebFetch|WebSearch|TodoWrite';
       }
       // 끝난 시점은 Bash만 — 종료코드로 실패 감지(다른 도구는 굳이 매번 안 봄)
       if (event === 'PostToolUse') {

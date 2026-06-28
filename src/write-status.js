@@ -180,7 +180,7 @@ function finish() {
 
   // 직전 '요청 키워드(req)'를 이어받는다. 도구 이벤트가 연달아 와도
   // 요청 맥락은 유지하면서 '지금 하는 작업(tool)'만 갱신하기 위함.
-  let req = '', tool = '', err = false;
+  let req = '', tool = '', toolName = '', err = false;
   try {
     const prev = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (prev && typeof prev.req === 'string') req = prev.req;
@@ -197,11 +197,13 @@ function finish() {
         if (!isSyntheticPrompt(ev.prompt)) {  // 시스템 합성 프롬프트(task-notification 등)는 무시
           req = keywordsFromPrompt(ev.prompt); // 실제 요청만 키워드 갱신, 작업 초기화
           tool = '';
+          toolName = '';                // 새 요청 → 머리 위 도구 아이콘도 비움
           err = false;                  // 새 요청 시작 → 실패 플래그 리셋
         }
         // 합성 프롬프트면 직전 실제 요청 맥락(req)을 그대로 유지
       } else if (ev) {                  // 도구 사용 → 작업만 갱신, 요청 키워드는 유지
         tool = toolKeyword(ev);
+        toolName = ev.tool_name || '';  // 원래 도구 이름(머리 위 아이콘 매핑용)
         // PostToolUse(Bash)에는 tool_response가 실려온다 → 가장 최근 Bash의 성공/실패로 갱신.
         // (PreToolUse엔 tool_response가 없어 err는 그대로 유지)
         if (ev.tool_name === 'Bash' && ev.tool_response !== undefined) {
@@ -221,14 +223,14 @@ function finish() {
   }
 
   // 세션이 새로 시작되면 직전 세션의 요청 맥락은 비운다.
-  if (state === 'start') { req = ''; tool = ''; err = false; }
+  if (state === 'start') { req = ''; tool = ''; toolName = ''; err = false; }
 
   // 짧은 요청 키워드 + 실제 작업 중인 것을 섞어서 표시
   const keyword = (req && tool) ? `${req} · ${tool}` : (req || tool || '');
 
   try {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ state, ts: Date.now(), keyword, req, tool, err }), 'utf8');
+    fs.writeFileSync(file, JSON.stringify({ state, ts: Date.now(), keyword, req, tool, toolName, err }), 'utf8');
   } catch {
     // 무시 — 금옥이 때문에 Claude Code가 멈추는 일은 없어야 한다
   }

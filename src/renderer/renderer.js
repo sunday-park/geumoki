@@ -92,6 +92,19 @@ function sadDone() {
   bubbleUntil = now() + 4200;
 }
 
+// 작업 도구 아이콘: 작업 중(working) 머리 위에 '지금 쓰는 도구' 이모지가 둥실 떠오른다.
+// 메모지의 toolName(원래 도구 이름)을 이모지로 매핑. 작업이 끝나거나 도구가 없으면 스르륵 사라짐.
+const TOOL_ICON = {
+  Read: '📖', Edit: '✏️', MultiEdit: '✏️', Write: '📝',
+  Grep: '🔍', Glob: '📁', Bash: '⌨️', Task: '🤖',
+  TodoWrite: '✅', WebFetch: '🌐', WebSearch: '🌐', NotebookEdit: '📓',
+};
+const TOOL_ICON_DEFAULT = '⚙️';
+let toolName = '';         // 현재 도구 이름(메모지에서)
+let toolIconAlpha = 0;     // 0~1 페이드(부드러운 등장/퇴장)
+let shownToolEmoji = '';   // 지금 그리고 있는 이모지(바뀌면 '톡' 교체 효과)
+let toolSwapAt = 0;        // 마지막으로 아이콘이 바뀐 시각
+
 // 커서 쳐다보기: 가까이 온 마우스 쪽을 바라본다(좌우 방향 전환만).
 // (창은 클릭 통과 상태에서도 forward:true 라 창 영역 안에서는 mousemove가 들어온다)
 let pointerX = null, pointerY = null;  // 마지막으로 본 커서 위치(창 기준 px)
@@ -234,6 +247,7 @@ window.geumoki.onStatus((data) => {
   lastTs = data.ts;
   if (data.keyword) lastKeyword = data.keyword; // 새 키워드 올 때만 갱신(유지)
   lastErr = !!data.err;                          // 직전 작업의 성공/실패(메모지에서)
+  toolName = data.toolName || '';                // 머리 위 도구 아이콘용(없으면 비움)
   react(data.state || 'idle');
 });
 
@@ -486,6 +500,29 @@ function drawSad(t) {
   ctx.restore();
 }
 
+// ---- 작업 도구 아이콘(머리 위 둥실) ----
+// want = 지금 띄울 이모지('' 면 숨김). 부드러운 페이드 + 도구 바뀌면 '톡' 교체.
+function drawToolIcon(t, want) {
+  if (want && want !== shownToolEmoji) { shownToolEmoji = want; toolSwapAt = t; }
+  const targetA = want ? 1 : 0;
+  toolIconAlpha += (targetA - toolIconAlpha) * 0.18;          // 프레임 기반 부드러운 보간
+  if (targetA === 0 && toolIconAlpha < 0.02) { toolIconAlpha = 0; shownToolEmoji = ''; }
+  if (toolIconAlpha <= 0.01 || !shownToolEmoji) return;
+
+  const bob = Math.sin(t * 0.004) * 4;                         // 둥실 위아래
+  const since = t - toolSwapAt;
+  const pop = since < 240 ? 1 + 0.30 * Math.sin((since / 240) * Math.PI) : 1; // 교체 직후 '톡'
+  const x = GRID / 2;
+  const y = 52 + bob;                                          // 머리 위(💢/💫보다 살짝 위)
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = clamp(toolIconAlpha, 0, 1);
+  ctx.font = `${(30 * pop).toFixed(1)}px serif`;
+  ctx.fillText(shownToolEmoji, x, y);
+  ctx.restore();
+}
+
 // ---- 매 프레임 ----
 function tick() {
   const t = now();
@@ -559,6 +596,10 @@ function tick() {
   drawDizzyStar(t);
   // 실패로 끝났을 때 머리 위 💢
   drawSad(t);
+  // 작업 중이면 머리 위에 '지금 쓰는 도구' 아이콘(쓰다듬기/어지러움/시무룩/잘 때는 양보)
+  const showTool = mode === 'working' && toolName && !petting
+    && !(dizzyUntil && t < dizzyUntil) && !(sadUntil && t < sadUntil) && !sleeping;
+  drawToolIcon(t, showTool ? (TOOL_ICON[toolName] || TOOL_ICON_DEFAULT) : '');
 
   // 착지 '퉁' 찌부러짐: 닿는 순간 납작(가로로 퍼짐)했다가 출렁이며 원래대로.
   // (#seal transform-origin 이 바닥쪽이라 바닥에 눌리는 느낌이 난다)
