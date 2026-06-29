@@ -305,10 +305,34 @@ ipcMain.on('drag-follow', () => {
 // renderer → main: 손 놓음 → 중력으로 바닥에 떨어뜨림
 ipcMain.on('drag-end', () => { grabOffset = null; dropToFloor(); });
 
+// ---- Windows 시작 시 자동 실행 ----
+// 포터블 exe는 실행될 때마다 임시폴더에 압축이 풀려 process.execPath가 임시경로가 된다.
+// 그대로 등록하면 다음 부팅 때 그 임시경로가 사라져 자동 실행이 깨진다.
+// → electron-builder가 넣어주는 PORTABLE_EXECUTABLE_FILE(원본 exe의 실제 경로)를 우선 쓴다.
+//   (개발 중엔 이 변수가 없어 electron.exe 경로가 되며, 토글은 동작만 하고 의미는 배포본에서 생김)
+function autoLaunchTarget() {
+  return { path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, args: [] };
+}
+function isAutoLaunch() {
+  try {
+    return app.getLoginItemSettings(autoLaunchTarget()).openAtLogin;
+  } catch {
+    return false;
+  }
+}
+function setAutoLaunch(on) {
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!on, ...autoLaunchTarget() });
+  } catch {
+    // 등록 실패해도 앱 동작엔 지장 없음(자동 실행만 안 될 뿐)
+  }
+}
+
 // renderer → main: 금옥이 우클릭 메뉴
 ipcMain.on('show-context-menu', () => {
   const menu = Menu.buildFromTemplate([
     { label: '따라오기', type: 'checkbox', checked: followMode, click: () => setFollow(!followMode) },
+    { label: 'Windows 시작 시 자동 실행', type: 'checkbox', checked: isAutoLaunch(), click: (mi) => setAutoLaunch(mi.checked) },
     { type: 'separator' },
     {
       label: hidden ? '금옥이 보이기' : '잠깐 숨기기',
