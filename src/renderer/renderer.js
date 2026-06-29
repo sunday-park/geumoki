@@ -172,15 +172,16 @@ function say(category) {
     text = pick(plain.length ? plain : list);
   }
   bubbleTextEl.textContent = text.replace(/\{kw\}/g, lastKeyword).trim();
-  updateBubbleIcon();           // 이 말풍선에 맞는 도구 아이콘(작업 중일 때만) 반영
+  updateBubbleIcon(category);   // 이 말풍선에 맞는 도구 아이콘(작업 대사일 때만) 반영
   bubbleEl.classList.add('show');
   bubbleUntil = now() + 5500;   // 말풍선 지속시간(조금 늘림)
 }
 
-// 말풍선 앞 도구 아이콘: 작업 중(working)이고 도구가 있을 때만 이모지를 넣는다.
-// 그 외(인사·완료·졸림·쓰다듬 등)엔 비워서 평범한 말풍선으로.
-function updateBubbleIcon() {
-  const emoji = (mode === 'working' && toolName) ? (TOOL_ICON[toolName] || TOOL_ICON_DEFAULT) : '';
+// 말풍선 앞 도구 아이콘: '작업 중' 대사(working/workingLong)일 때만 이모지를 넣는다.
+// 작업 중이라도 쓰다듬기·어지러움 등 다른 대사엔 비워서 평범한 말풍선으로.
+function updateBubbleIcon(category) {
+  const isWorkingMsg = category === 'working' || category === 'workingLong';
+  const emoji = (isWorkingMsg && toolName) ? (TOOL_ICON[toolName] || TOOL_ICON_DEFAULT) : '';
   if (bubbleIconEl.textContent !== emoji) bubbleIconEl.textContent = emoji;
 }
 
