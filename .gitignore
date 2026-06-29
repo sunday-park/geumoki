@@ -6,3 +6,6 @@ node_modules/
 
 # 디버그 모드 화면 캡처
 debug-capture.png
+
+# 빌드 산출물(포터블 exe 등) — 용량 커서 깃에 안 올림
+dist/

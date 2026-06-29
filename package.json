@@ -8,11 +8,30 @@
     "dev": "set GEUMOKI_DEV=1&& electron .",
     "install-hooks": "node src/install-hooks.js",
     "uninstall-hooks": "node src/install-hooks.js --remove",
+    "make-icon": "electron build/make-icon.js",
+    "dist": "electron-builder --win portable",
     "test": "node --test"
   },
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^31.0.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.geumoki.pet",
+    "productName": "금옥이",
+    "icon": "build/icon.png",
+    "files": [
+      "src/**/*",
+      "!src/install-hooks.js",
+      "!src/write-status.js"
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "금옥이.exe"
+    }
   }
 }
