@@ -31,7 +31,8 @@
       "target": "portable"
     },
     "portable": {
-      "artifactName": "금옥이.exe"
+      "artifactName": "금옥이.exe",
+      "unpackDirName": "geumoki"
     }
   }
 }
