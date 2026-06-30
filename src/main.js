@@ -479,17 +479,20 @@ function createTray() {
   }
 }
 
-// 메모지 파일 감시 (파일이 아직 없을 수 있으니 폴더를 감시 + 보조 폴링)
+// 메모지 파일 감시.
+// 메모지 폴더(~/.claude/geumoki)는 Claude Code 훅이 만든다. 마스코트 전용(Claude 없는 PC)에선
+// 이 폴더를 우리가 만들지 않는다 — 안 쓰는 빈 폴더를 남기지 않기 위함.
+// 폴더가 있으면 즉시 감시(fs.watch)하고, 없으면 1초 폴링만으로 충분히 따라간다
+// (나중에 Claude 훅이 폴더를 만들면 폴링이 알아서 집어낸다). 메모지 파일이 없으면 readStatus가 idle을 돌려준다.
 function watchStatus() {
   try {
-    fs.mkdirSync(DIR, { recursive: true });
+    if (fs.existsSync(DIR)) {
+      fs.watch(DIR, (_event, filename) => {
+        if (!filename || filename === 'status.json') sendStatus();
+      });
+    }
   } catch {}
-  try {
-    fs.watch(DIR, (_event, filename) => {
-      if (!filename || filename === 'status.json') sendStatus();
-    });
-  } catch {}
-  // fs.watch가 일부 환경에서 누락될 수 있어 1초 폴링을 보조로 둔다
+  // fs.watch가 없거나(폴더 미존재) 일부 환경에서 누락될 수 있어 1초 폴링을 보조로 둔다
   setInterval(sendStatus, 1000);
 }
 
