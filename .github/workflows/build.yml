@@ -42,6 +42,15 @@ jobs:
           # 맥: 서명 인증서가 없으므로 자동 서명 탐색을 끈다(미서명 빌드).
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # 로컬 빌드는 한글명(금옥이.exe)을 쓰지만, GitHub Release 는 한글 자산명을
+      # default.exe 로 바꿔버린다. CI 릴리스용으로만 ASCII 이름으로 정리한다.
+      - name: 윈도우 exe 이름 정리(한글 → ASCII)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          Get-ChildItem dist/*.exe | ForEach-Object { Rename-Item $_.FullName "geumoki-$v-win.exe" }
+
       - name: 결과물 업로드(Actions 실행용)
         uses: actions/upload-artifact@v4
         with:
