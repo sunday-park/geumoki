@@ -7,6 +7,7 @@ const path = require('path');
 
 const FRAMES = 24;
 const OUT = path.join(__dirname, 'icon.png');
+const TRAY_OUT = path.join(__dirname, '..', 'src', 'tray.png');  // 트레이/창 아이콘(앱에 번들됨)
 
 app.disableHardwareAcceleration();
 
@@ -29,6 +30,11 @@ app.whenReady().then(() => {
 
     fs.writeFileSync(OUT, icon.toPNG());
     console.log('[icon] 저장됨:', OUT, `(시트 ${width}x${height}, 프레임폭 ${frameW}, 정사각 ${side})`);
+
+    // 트레이/창용 작은 아이콘(32x32) — 알림영역에 또렷하게 보이도록.
+    const tray = icon.resize({ width: 32, height: 32, quality: 'best' });
+    fs.writeFileSync(TRAY_OUT, tray.toPNG());
+    console.log('[icon] 트레이 저장됨:', TRAY_OUT, '(32x32)');
   } catch (err) {
     console.error('[icon] 실패:', err && err.message);
     process.exitCode = 1;

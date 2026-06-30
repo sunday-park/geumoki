@@ -158,6 +158,7 @@ function createWindow() {
     hasShadow: false,
     focusable: true,
     show: false,
+    icon: appIcon() || undefined,   // alt-tab·대화상자 등에서 금옥이 아이콘으로 표시
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -453,12 +454,18 @@ function followStep() {
   }
 }
 
+// 트레이/창에서 쓰는 금옥이 아이콘(없으면 안전하게 빈 이미지로 폴백)
+function appIcon() {
+  const p = path.join(__dirname, 'tray.png');
+  const img = nativeImage.createFromPath(p);
+  return img.isEmpty() ? null : img;
+}
+
 // 트레이 아이콘(작업표시줄 우측 알림영역)에서도 보이기/종료 가능
 function createTray() {
-  // 16x16 작은 회색 점 아이콘을 코드로 생성
-  const img = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAOklEQVR42mNgGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEwCgDk7AABjQ6m3wAAAABJRU5ErkJggg=='
-  );
+  // 알림영역에 또렷하게 보이도록 금옥이 아이콘(32x32)을 쓴다.
+  const img = appIcon();
+  if (!img) return;   // 아이콘이 없으면 트레이를 만들지 않는다(보이지 않는 점 대신)
   try {
     tray = new Tray(img);
     tray.setToolTip('금옥이');
