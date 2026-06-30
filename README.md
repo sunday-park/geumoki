@@ -79,17 +79,10 @@ npm run uninstall-hooks
 
 ## 릴리스 / 버전 기록
 
-내려받기 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 `exe` · 맥 `dmg`/`zip`)
-
-> **첫 빌드(v1.0.0) 이후** 추가·개선된 것만 정리했어요.
-
-### v1.0.3 (2026-06-30) — 최신
-- 🍎 **맥 지원** — `.dmg`/`.zip` 추가, GitHub Actions로 윈도우·맥 자동 빌드 → Releases 자동 게시
-- 🔗 우클릭 메뉴 **'Claude 작업 추적 연동'** 토글 — Claude 안 써도 순수 마스코트로 사용 가능
-- 🐛 포터블 exe 반복 실행 시 `ffmpeg.dll` 오류 수정
-- 🦭 트레이/창 아이콘을 금옥이로 변경 (투명 점 → 또렷한 아이콘)
-- 🧹 안 쓰는 빈 폴더(`.claude/geumoki`) 생성 안 함
-
-### v1.0.0 (2026-06-29) — 첫 빌드
-- 📦 마스코트 전용 **포터블 단일 exe**로 첫 배포
-- ⏰ 우클릭 메뉴 **'Windows 시작 시 자동 실행'** 토글
+> <sub>내려받기 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 exe · 맥 dmg/zip). 아래는 **첫 빌드(v1.0.0) 이후** 추가·개선분만.</sub>
+>
+> <sub>**v1.0.3 (2026-06-30) · 최신**</sub><br>
+> <sub>맥 지원(dmg/zip) + 윈도우·맥 자동 빌드 · 'Claude 작업 추적 연동' 토글 · ffmpeg.dll 오류 수정 · 트레이/창 아이콘 금옥이로 · 빈 폴더 생성 방지</sub>
+>
+> <sub>**v1.0.0 (2026-06-29) · 첫 빌드**</sub><br>
+> <sub>마스코트 전용 포터블 단일 exe 첫 배포 · 'Windows 시작 시 자동 실행' 토글</sub>

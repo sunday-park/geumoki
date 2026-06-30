@@ -12,6 +12,7 @@
     "dist": "electron-builder --win portable",
     "dist:win": "electron-builder --win portable",
     "dist:mac": "electron-builder --mac",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1",
     "test": "node --test"
   },
   "author": "",
