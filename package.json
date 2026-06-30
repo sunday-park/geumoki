@@ -1,6 +1,6 @@
 {
   "name": "geumoki",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "금옥이 — Claude Code 데스크톱 마스코트(회색 물개)",
   "main": "src/main.js",
   "scripts": {
@@ -24,8 +24,7 @@
     "icon": "build/icon.png",
     "files": [
       "src/**/*",
-      "!src/install-hooks.js",
-      "!src/write-status.js"
+      "!src/install-hooks.js"
     ],
     "win": {
       "target": "portable"

@@ -3,11 +3,12 @@
 // - "메모지" 파일(status.json)을 감시하다가 바뀌면 화면(renderer)에 알려주고
 // - 트레이/우클릭 메뉴, 빈 공간 클릭 통과(click-through)를 담당한다.
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, screen, nativeImage, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { DIR, STATUS_FILE } = require('./status-path');
 const settings = require('./settings');
+const hooksInstaller = require('./hooks-installer');
 
 // 일부 Windows 환경에서 GPU 가속이 투명 창을 안 그리는 문제를 막는다.
 app.disableHardwareAcceleration();
@@ -329,11 +330,35 @@ function setAutoLaunch(on) {
   }
 }
 
+// ---- Claude 작업 추적 연동 켜기/끄기 ----
+// 켜면 Claude Code 훅을 설치해 작업 상태(시작/작업중/완료 등)를 금옥이가 알아챈다.
+// Claude 안 쓰는 사람은 안 켜도 마스코트로 잘 동작한다.
+function toggleClaudeHooks(on) {
+  try {
+    if (on) hooksInstaller.install(__dirname);  // __dirname = 앱의 src(여기 write-status.js 동봉)
+    else hooksInstaller.uninstall();
+    dialog.showMessageBox({
+      type: 'info',
+      title: '금옥이',
+      message: on ? 'Claude 작업 추적을 연결했어요!' : 'Claude 작업 추적을 껐어요.',
+      detail: 'Claude Code를 새로 켜면 적용됩니다.\n(Claude Code의 node가 필요해요)',
+    });
+  } catch (e) {
+    dialog.showMessageBox({
+      type: 'error',
+      title: '금옥이',
+      message: '설정에 실패했어요.',
+      detail: String((e && e.message) || e),
+    });
+  }
+}
+
 // renderer → main: 금옥이 우클릭 메뉴
 ipcMain.on('show-context-menu', () => {
   const menu = Menu.buildFromTemplate([
     { label: '따라오기', type: 'checkbox', checked: followMode, click: () => setFollow(!followMode) },
     { label: 'Windows 시작 시 자동 실행', type: 'checkbox', checked: isAutoLaunch(), click: (mi) => setAutoLaunch(mi.checked) },
+    { label: 'Claude 작업 추적 연동', type: 'checkbox', checked: hooksInstaller.isInstalled(), click: (mi) => toggleClaudeHooks(mi.checked) },
     { type: 'separator' },
     {
       label: hidden ? '금옥이 보이기' : '잠깐 숨기기',
