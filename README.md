@@ -72,25 +72,3 @@ npm run uninstall-hooks
 
 > **이미 금옥이를 연결해 쓰던 분은** 새 도구(📖🔍📁 등)까지 아이콘이 뜨게 하려면
 > `npm run install-hooks` 를 **한 번 더** 실행하고 Claude Code를 새로 켜주세요.
-
----
-
-## 대사 바꾸기
-
-대사는 `src/renderer/messages.js` 에 모여 있어요.
-코드 몰라도 따옴표 `"..."` 안의 글자만 바꾸거나 줄을 추가/삭제하면 됩니다.
-(줄 끝의 쉼표 `,` 는 그대로 두세요.)
-
----
-
-## 구조 (참고)
-
-```
-Claude Code ──(hook)──▶ 📝 ~/.claude/geumoki/status.json ──▶ 금옥이 앱
-```
-
-- `src/write-status.js` — Claude Code hook이 불러 상태를 메모지에 적음
-- `src/main.js` — 투명 창 + 메모지 감시 + 트레이/메뉴
-- `src/renderer/` — 금옥이 그림(`seal.js`), 화면 로직(`renderer.js`), 대사(`messages.js`)
-- `src/install-hooks.js` — Claude Code 연결/해제 도우미
-```
