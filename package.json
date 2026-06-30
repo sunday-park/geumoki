@@ -10,6 +10,8 @@
     "uninstall-hooks": "node src/install-hooks.js --remove",
     "make-icon": "electron build/make-icon.js",
     "dist": "electron-builder --win portable",
+    "dist:win": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac",
     "test": "node --test"
   },
   "author": "",
@@ -32,6 +34,15 @@
     "portable": {
       "artifactName": "금옥이.exe",
       "unpackDirName": "geumoki"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "category": "public.app-category.utilities",
+      "artifactName": "geumoki-${version}-mac.${ext}",
+      "identity": null
     }
   }
 }

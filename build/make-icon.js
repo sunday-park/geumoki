@@ -1,5 +1,5 @@
-// 금옥이 스프라이트 시트(seal-img.js)의 첫 프레임을 잘라 256×256 PNG 아이콘으로 저장한다.
-// electron-builder가 이 PNG를 Windows .ico 로 자동 변환해 준다.
+// 금옥이 스프라이트 시트(seal-img.js)의 첫 프레임을 잘라 512×512 PNG 아이콘으로 저장한다.
+// electron-builder가 이 PNG를 Windows .ico / macOS .icns 로 자동 변환해 준다(맥은 512 이상 필요).
 // 실행: node_modules/.bin/electron build/make-icon.js
 const { app, nativeImage } = require('electron');
 const fs = require('fs');
@@ -26,7 +26,7 @@ app.whenReady().then(() => {
     const cropX = Math.round((frameW - side) / 2);
     const cropY = Math.round((height - side) / 2);
     let icon = sheet.crop({ x: cropX, y: cropY, width: side, height: side });
-    icon = icon.resize({ width: 256, height: 256, quality: 'best' });
+    icon = icon.resize({ width: 512, height: 512, quality: 'best' });
 
     fs.writeFileSync(OUT, icon.toPNG());
     console.log('[icon] 저장됨:', OUT, `(시트 ${width}x${height}, 프레임폭 ${frameW}, 정사각 ${side})`);
