@@ -81,7 +81,10 @@ npm run uninstall-hooks
 
 > <sub>내려받기 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 exe · 맥 dmg/zip). 아래는 **첫 빌드(v1.0.0) 이후** 추가·개선분만.</sub>
 >
-> <sub>**v1.0.3 (2026-06-30) · 최신**</sub><br>
+> <sub>**v1.0.4 (2026-07-01) · 최신**</sub><br>
+> <sub>던지면 탱탱볼처럼 미끄러지며 튕김 · 높이 들어올리면 '높다아' 대사</sub>
+>
+> <sub>**v1.0.3 (2026-06-30)**</sub><br>
 > <sub>맥 지원(dmg/zip) + 윈도우·맥 자동 빌드 · 'Claude 작업 추적 연동' 토글 · ffmpeg.dll 오류 수정 · 트레이/창 아이콘 금옥이로 · 빈 폴더 생성 방지</sub>
 >
 > <sub>**v1.0.0 (2026-06-29) · 첫 빌드**</sub><br>
