@@ -49,6 +49,11 @@ function restY(wa) {
 // 마우스로 잡았을 때 커서와 창의 간격(드래그 중 절대좌표 추적용). null이면 안 잡힌 상태.
 let grabOffset = null;
 
+// 던질 때의 '가로 속도' 추정 — 놓는 순간 탱탱볼처럼 옆으로 미끄러지게 하려고
+// 드래그 중 창 x의 프레임별 변화를 부드럽게 누적한다.
+let prevGrabX = null;   // 직전 드래그 프레임의 창 x
+let throwVX = 0;        // 부드럽게 평균낸 가로 속도(px/프레임)
+
 // 어슬렁(walk) 이동용 '부동소수' 누적 위치. (null=아직 동기화 전)
 // getPosition()은 정수로 반올림돼 돌아오는데, 배율(150% 등) 모니터에선 1px 이동이
 // 반올림에 먹혀 제자리에 머문다. 그래서 실제 창 위치 대신 소수점 위치를 직접 누적한다.
@@ -61,39 +66,57 @@ function cancelDrop() {
   if (dropTimer) { clearInterval(dropTimer); dropTimer = null; }
 }
 // 현재 위치에서 바닥(평소 쉬는 위치)까지 중력으로 떨어뜨린다. 착지하면 renderer에 알림.
-function dropToFloor() {
+// vx0 = 놓는 순간의 가로 속도(px/프레임). 있으면 탱탱볼처럼 옆으로 미끄러지며 튕긴다.
+function dropToFloor(vx0 = 0) {
   cancelDrop();
   if (!win || win.isDestroyed()) return;
   const [x, y] = win.getPosition();
   const wa = screen.getDisplayMatching({ x, y, width: W, height: H }).workArea;
   const floorY = restY(wa);
-  if (y >= floorY - 1) {                 // 이미 바닥에 있으면 낙하 없이 착지(충격 0)만 통보
+  const THROW_VX_MAX = 20;               // 미끄러짐 가로 속도 상한(px/프레임) — 세게 던지면 멀리
+  const FRICTION = 0.97;                 // 매 틱 가로 감쇠 — 가볍게 오래 미끄러짐(1에 가까울수록 멀리)
+  let vx = Math.max(-THROW_VX_MAX, Math.min(vx0, THROW_VX_MAX));
+  if (y >= floorY - 1 && Math.abs(vx) < 0.5) {  // 이미 바닥 & 던진 힘도 없음 → 착지(충격 0)만 통보
     win.webContents.send('landed', 0);
     return;
   }
   let vy = 0;
+  let onFloor = y >= floorY - 1;         // 바닥에서 시작하면 세로 낙하 없이 가로로만 미끄러짐
   const G = 1.4;                         // 매 틱 가속도(px) — 클수록 빨리 떨어짐
-  // 물개라 무겁다 → 바닥에 닿으면 속도를 많이 잃고 작게 '통통통' 몇 번만 튕긴다.
-  const RESTITUTION = 0.4;               // 튕김 후 남는 속도 비율(낮을수록 무겁고 덜 튕김)
+  // 탱탱볼처럼 통통 → 바닥에 닿아도 속도를 남겨 몇 번 튕긴다.
+  const RESTITUTION = 0.5;               // 튕김 후 남는 속도 비율(높을수록 가볍게 더 통통)
   const MIN_BOUNCE = 2.2;                // 튕김 속도가 이보다 작으면 그만 튕기고 멈춤
   let bounce = 0;                        // 몇 번째 바닥 접촉인지(0=처음 큰 충격, 1+=잔여 통통)
   dropTimer = setInterval(() => {
     if (!win || win.isDestroyed()) { cancelDrop(); return; }
     const [cx, cy] = win.getPosition();
+    // 가로: 미끄러짐 (벽에 닿으면 반대로 튕김) + 마찰로 서서히 감쇠
+    let nx = cx + vx;
+    const cl = clampX(nx, wa);
+    nx = cl.x;
+    if (cl.hit !== 0) vx = -vx * RESTITUTION;
+    vx *= FRICTION;
+    if (onFloor) {                       // 바닥에서 가로로만 미끄러지는 중
+      win.setBounds({ x: Math.round(nx), y: floorY, width: W, height: H });
+      if (Math.abs(vx) < 0.4) cancelDrop();   // 다 미끄러졌으면 정지
+      return;
+    }
     vy += G;
     const ny = cy + vy;
     if (ny >= floorY) {                  // 바닥 도달 → 착지(또는 튕김)
-      win.setBounds({ x: cx, y: floorY, width: W, height: H });
+      win.setBounds({ x: Math.round(nx), y: floorY, width: W, height: H });
       win.webContents.send('landed', Math.round(vy), bounce);  // 착지 속도(충격)+몇 번째 튕김
       const rebound = vy * RESTITUTION;
       if (rebound >= MIN_BOUNCE) {       // 아직 튕길 힘이 남았으면 위로 통!
         vy = -rebound;
         bounce++;
+      } else if (Math.abs(vx) >= 0.4) {  // 세로는 멈췄지만 가로로 미끄러지는 중 → 계속
+        onFloor = true;
       } else {
         cancelDrop();                    // 거의 멈췄으면 바닥에 안착
       }
     } else {
-      win.setBounds({ x: cx, y: Math.round(ny), width: W, height: H });
+      win.setBounds({ x: Math.round(nx), y: Math.round(ny), width: W, height: H });
     }
   }, 16);
 }
@@ -289,6 +312,7 @@ ipcMain.on('drag-start', () => {
   const c = screen.getCursorScreenPoint();          // OS 커서 절대좌표(DIP)
   const [wx, wy] = win.getPosition();
   grabOffset = { x: c.x - wx, y: c.y - wy };
+  prevGrabX = wx; throwVX = 0;                       // 던진 가로 속도 추정 초기화
 });
 
 // renderer → main: 잡고 움직이는 중 — 델타 누적이 아니라 '커서 절대좌표'를 따라가
@@ -298,6 +322,9 @@ ipcMain.on('drag-follow', () => {
   const c = screen.getCursorScreenPoint();
   const wa = screen.getDisplayNearestPoint(c).workArea;  // 커서가 있는 모니터 기준
   const nx = clampX(c.x - grabOffset.x, wa).x;
+  // 놓는 순간 미끄러지게: 직전 프레임 대비 x 변화를 부드럽게 평균내 가로 속도로 기억한다.
+  if (prevGrabX !== null) throwVX = throwVX * 0.6 + (nx - prevGrabX) * 0.4;
+  prevGrabX = nx;
   // 세로도 그 모니터 안에 머물게 해서 화면 밖으로 사라지지 않게 한다.
   const ny = Math.max(wa.y, Math.min(c.y - grabOffset.y, wa.y + wa.height - H));
   // setBounds로 크기까지 240×240으로 고정 → DPI 리사이즈가 좌표를 오염시키지 못함.
@@ -305,7 +332,11 @@ ipcMain.on('drag-follow', () => {
 });
 
 // renderer → main: 손 놓음 → 중력으로 바닥에 떨어뜨림
-ipcMain.on('drag-end', () => { grabOffset = null; dropToFloor(); });
+ipcMain.on('drag-end', () => {
+  const vx0 = throwVX;                  // 놓기 직전의 가로 속도로 미끄러지게
+  grabOffset = null; prevGrabX = null;
+  dropToFloor(vx0);
+});
 
 // ---- Windows 시작 시 자동 실행 ----
 // 포터블 exe는 실행될 때마다 임시폴더에 압축이 풀려 process.execPath가 임시경로가 된다.
