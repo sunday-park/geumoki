@@ -21,7 +21,7 @@ Set-Location $root
 
 # 1) 현재 버전 읽기
 $pkgPath = Join-Path $root "package.json"
-$pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
+$pkg = Get-Content $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $cur = $pkg.version
 $parts = $cur.Split('.') | ForEach-Object { [int]$_ }
 
@@ -50,7 +50,7 @@ if ($existing) { Write-Error "태그 v$new 가 이미 존재합니다."; exit 1 
 Write-Host "버전 $cur  ->  $new" -ForegroundColor Cyan
 
 # 3) package.json 의 version 만 교체 (BOM 없이 저장)
-$raw = Get-Content $pkgPath -Raw
+$raw = Get-Content $pkgPath -Raw -Encoding UTF8
 $raw = $raw -replace '("version"\s*:\s*")[^"]+(")', "`${1}$new`${2}"
 [System.IO.File]::WriteAllText($pkgPath, $raw, (New-Object System.Text.UTF8Encoding($false)))
 
