@@ -81,7 +81,10 @@ npm run uninstall-hooks
 
 > <sub>내려받기 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 exe · 맥 dmg/zip). 아래는 **첫 빌드(v1.0.0) 이후** 추가·개선분만.</sub>
 >
-> <sub>**v1.0.4 (2026-07-01) · 최신**</sub><br>
+> <sub>**v1.0.5 (2026-07-01) · 최신**</sub><br>
+> <sub>Electron 43 업그레이드 — 최신 맥(Apple M5·macOS 26) 실행 크래시 해결</sub>
+>
+> <sub>**v1.0.4 (2026-07-01)**</sub><br>
 > <sub>던지면 탱탱볼처럼 미끄러지며 튕김 · 높이 들어올리면 '높다아' 대사</sub>
 >
 > <sub>**v1.0.3 (2026-06-30)**</sub><br>
