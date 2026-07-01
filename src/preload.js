@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('geumoki', {
   // 손에서 놓은 뒤 중력으로 떨어져 바닥에 닿았을 때 수신
   // (impact: 접촉 속도, bounce: 몇 번째 접촉 — 0=처음 큰 충격, 1+=잔여 통통 튕김)
   onLanded: (cb) => ipcRenderer.on('landed', (_e, impact, bounce) => cb(impact, bounce || 0)),
+  // 잡아서 화면 위쪽까지 높이 들어올렸을 때 수신 ('우와, 높다아~')
+  onLiftedHigh: (cb) => ipcRenderer.on('lifted-high', () => cb()),
   // 우클릭 메뉴 띄우기
   contextMenu: () => ipcRenderer.send('show-context-menu'),
   // 따라오기 on/off 토글 수신 + 따라가는 동안의 방향/이동 상태 수신

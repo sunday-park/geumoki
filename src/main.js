@@ -53,6 +53,7 @@ let grabOffset = null;
 // 드래그 중 창 x의 프레임별 변화를 부드럽게 누적한다.
 let prevGrabX = null;   // 직전 드래그 프레임의 창 x
 let throwVX = 0;        // 부드럽게 평균낸 가로 속도(px/프레임)
+let saidHighThisLift = false;  // 이번에 잡은 동안 '높다아' 대사를 이미 했는지(한 번만)
 
 // 어슬렁(walk) 이동용 '부동소수' 누적 위치. (null=아직 동기화 전)
 // getPosition()은 정수로 반올림돼 돌아오는데, 배율(150% 등) 모니터에선 1px 이동이
@@ -313,6 +314,7 @@ ipcMain.on('drag-start', () => {
   const [wx, wy] = win.getPosition();
   grabOffset = { x: c.x - wx, y: c.y - wy };
   prevGrabX = wx; throwVX = 0;                       // 던진 가로 속도 추정 초기화
+  saidHighThisLift = false;                          // 이번 잡기에서 '높다아' 대사 다시 가능
 });
 
 // renderer → main: 잡고 움직이는 중 — 델타 누적이 아니라 '커서 절대좌표'를 따라가
@@ -327,6 +329,11 @@ ipcMain.on('drag-follow', () => {
   prevGrabX = nx;
   // 세로도 그 모니터 안에 머물게 해서 화면 밖으로 사라지지 않게 한다.
   const ny = Math.max(wa.y, Math.min(c.y - grabOffset.y, wa.y + wa.height - H));
+  // 화면 위쪽(작업영역 상단 28%)까지 높이 들어올리면 한 번 '우와, 높다아~' (잡은 동안 1회만)
+  if (!saidHighThisLift && ny <= wa.y + wa.height * 0.28) {
+    saidHighThisLift = true;
+    win.webContents.send('lifted-high');
+  }
   // setBounds로 크기까지 240×240으로 고정 → DPI 리사이즈가 좌표를 오염시키지 못함.
   win.setBounds({ x: nx, y: ny, width: W, height: H });
 });

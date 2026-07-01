@@ -250,6 +250,15 @@ window.geumoki.onLanded((impact, bounce) => {
   }
 });
 
+// 잡아서 화면 위쪽까지 높이 들어올렸을 때 — 신나서 '우와, 높다아~' (들고 있는 중이라 잘 읽힘)
+window.geumoki.onLiftedHigh(() => {
+  if (pettingUntil && now() < pettingUntil) return;
+  bubbleTextEl.textContent = pick(MSG.high || ['우와, 높다아!']);
+  bubbleIconEl.textContent = '';
+  bubbleEl.classList.add('show');
+  bubbleUntil = now() + 1800;
+});
+
 window.geumoki.onStatus((data) => {
   if (!data || typeof data.ts !== 'number') return;
   if (data.ts === lastTs) return;
