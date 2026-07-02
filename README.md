@@ -79,19 +79,4 @@ npm run uninstall-hooks
 
 ## 릴리스 / 버전 기록
 
-> <sub>내려받기 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 exe · 맥 dmg/zip). 아래는 **첫 빌드(v1.0.0) 이후** 추가·개선분만.</sub>
->
-> <sub>**v1.0.6 (2026-07-02) · 최신**</sub><br>
-> <sub>맥(macOS 26) 실행 즉시 꺼짐 진짜 해결 — 원인은 한글 이름 헬퍼 앱을 macOS 26이 못 찾는 것. 맥 앱 내부명만 ASCII(Geumoki)로 바꾸고 화면 표시명은 금옥이 유지</sub>
->
-> <sub>**v1.0.5 (2026-07-01)**</sub><br>
-> <sub>Electron 43 업그레이드 (맥 크래시 해결 시도였으나 원인이 아니었음 → v1.0.6에서 해결)</sub>
->
-> <sub>**v1.0.4 (2026-07-01)**</sub><br>
-> <sub>던지면 탱탱볼처럼 미끄러지며 튕김 · 높이 들어올리면 '높다아' 대사</sub>
->
-> <sub>**v1.0.3 (2026-06-30)**</sub><br>
-> <sub>맥 지원(dmg/zip) + 윈도우·맥 자동 빌드 · 'Claude 작업 추적 연동' 토글 · ffmpeg.dll 오류 수정 · 트레이/창 아이콘 금옥이로 · 빈 폴더 생성 방지</sub>
->
-> <sub>**v1.0.0 (2026-06-29) · 첫 빌드**</sub><br>
-> <sub>마스코트 전용 포터블 단일 exe 첫 배포 · 'Windows 시작 시 자동 실행' 토글</sub>
+> <sub>내려받기·버전별 변경 내용 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 exe · 맥 dmg/zip)</sub>
