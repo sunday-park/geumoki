@@ -56,7 +56,7 @@ jobs:
 
       - name: '테스트 A: arm64 단독 electron-builder 빌드'
         run: |
-          npx electron-builder --mac zip --arm64
+          npx electron-builder --mac zip --arm64 --publish never
           ls dist/
           ditto -x -k dist/geumoki-*-mac.zip arm64-app
           codesign -dv "arm64-app/금옥이.app" 2>&1 | grep -E "Identifier|flags|Signature" || true
