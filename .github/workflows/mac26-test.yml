@@ -1,14 +1,13 @@
 name: mac26-test
 
-# macOS 26 (Tahoe) 진단 — 최종 해결책 검증. 수동 실행 전용, 배포와 무관.
-# 확정: macOS 26.4 에서 한글 이름 헬퍼(금옥이 Helper*.app)를 찾지 못해 기동 크래시.
-#       "Electron Helper*.app" 폴백이 있으면 생존. Electron 41/42/43 공통.
-# 이번 런: 내부 이름 ASCII(Geumoki) + 표시명 금옥이 빌드가 사는지 최종 확인.
+# macOS 26 (Tahoe) 릴리스 후보 최종 검증 — 수동 실행 전용, 배포와 무관.
+# 릴리스와 동일한 명령(npm run dist:mac)으로 빌드한 산출물이 macOS 26 에서 켜지는지 확인한다.
+# 근본 원인(확정): macOS 26.4 가 한글 이름 헬퍼 앱을 찾지 못해 기동 크래시 → 내부명 ASCII 로 해결.
 on:
   workflow_dispatch:
 
 jobs:
-  diag:
+  verify-release-build:
     runs-on: macos-26
     steps:
       - name: 환경 확인
@@ -26,54 +25,55 @@ jobs:
       - name: 의존성 설치
         run: npm ci
 
-      - name: 테스트 함수 준비
-        run: |
-          cat > /tmp/run_test.sh <<'EOF'
-          run_test() {
-            local label="$1"; shift
-            set +e
-            "$@" > "/tmp/$label.log" 2>&1 &
-            local pid=$!
-            sleep 12
-            if kill -0 "$pid" 2>/dev/null; then
-              echo "RESULT [$label]: ALIVE"
-              kill "$pid" 2>/dev/null; sleep 1
-            else
-              local code=0; wait "$pid" 2>/dev/null; code=$?
-              echo "RESULT [$label]: DEAD (exit=$code)"
-              tail -20 "/tmp/$label.log" 2>/dev/null
-            fi
-            set -e
-            return 0
-          }
-          EOF
-          echo ok
+      - name: 릴리스와 동일한 빌드 (npm run dist:mac)
+        run: npm run dist:mac -- --publish never
 
-      - name: 'F1: productName=Geumoki(ASCII) + 표시명 금옥이 빌드'
+      - name: 산출물 확인
         run: |
-          npx electron-builder --mac zip --arm64 --publish never \
-            -c.mac.identity=null \
-            -c.productName=Geumoki \
-            "-c.mac.extendInfo.CFBundleDisplayName=금옥이" \
-            -c.mac.artifactName='geumoki-${version}-mac-arm64.${ext}'
-          ditto -x -k dist/geumoki-*-mac-arm64.zip /tmp/f1
-          ls /tmp/f1
-          source /tmp/run_test.sh
-          run_test f1-ascii-internal "/tmp/f1/Geumoki.app/Contents/MacOS/Geumoki"
+          ls -la dist/
+          ditto -x -k dist/geumoki-*-mac.zip /tmp/rel
+          ls /tmp/rel
+          plutil -p "/tmp/rel/Geumoki.app/Contents/Info.plist" | grep -E "CFBundleDisplayName|CFBundleName|CFBundleExecutable"
+          ls "/tmp/rel/Geumoki.app/Contents/Frameworks/" | head -8
+          codesign -dv "/tmp/rel/Geumoki.app" 2>&1 | grep -E "Identifier|flags"
+          codesign --verify --deep --strict "/tmp/rel/Geumoki.app" && echo "서명 검증 OK"
 
-      - name: 'F2: F1 결과물의 겉 폴더명만 금옥이.app 으로 rename'
+      - name: 'zip 산출물 실행 테스트 (arm64, 15초 생존)'
         run: |
-          ditto /tmp/f1 /tmp/f2
-          mv "/tmp/f2/Geumoki.app" "/tmp/f2/금옥이.app"
-          source /tmp/run_test.sh
-          run_test f2-korean-dir "/tmp/f2/금옥이.app/Contents/MacOS/Geumoki"
+          set +e
+          "/tmp/rel/Geumoki.app/Contents/MacOS/Geumoki" > /tmp/rel.log 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "RESULT [release-zip-arm64]: ALIVE ✅"
+            kill "$pid"
+          else
+            wait "$pid"; code=$?
+            echo "RESULT [release-zip-arm64]: DEAD (exit=$code) ❌"
+            tail -20 /tmp/rel.log
+            exit 1
+          fi
 
-      - name: 'F3: 표시명 확인 (Info.plist)'
+      - name: 'dmg 산출물 실행 테스트 (마운트 후 동일 검증)'
         run: |
-          plutil -p "/tmp/f1/Geumoki.app/Contents/Info.plist" | grep -E "CFBundleDisplayName|CFBundleName|CFBundleExecutable"
-          ls "/tmp/f1/Geumoki.app/Contents/Frameworks/" | head -8
+          hdiutil attach dist/geumoki-*-mac.dmg -nobrowse -mountpoint /Volumes/geumoki-test
+          ditto "/Volumes/geumoki-test/Geumoki.app" /tmp/rel-dmg/Geumoki.app
+          hdiutil detach /Volumes/geumoki-test
+          set +e
+          "/tmp/rel-dmg/Geumoki.app/Contents/MacOS/Geumoki" > /tmp/reldmg.log 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "RESULT [release-dmg-arm64]: ALIVE ✅"
+            kill "$pid"
+          else
+            wait "$pid"; code=$?
+            echo "RESULT [release-dmg-arm64]: DEAD (exit=$code) ❌"
+            tail -20 /tmp/reldmg.log
+            exit 1
+          fi
 
-      - name: 크래시 리포트 요약
+      - name: 크래시 리포트 요약(있으면)
         if: always()
         run: |
           for f in ~/Library/Logs/DiagnosticReports/*.ips; do
@@ -87,11 +87,3 @@ jobs:
           print("proc:",body.get("procName"),"offsets:",[fr.get("imageOffset") for fr in th["frames"][:4]])
           PYEOF
           done
-
-      - name: 빌드 아티팩트 업로드
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: geumoki-ascii-build
-          path: dist/*.zip
-          if-no-files-found: ignore

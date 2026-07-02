@@ -11,7 +11,7 @@
     "make-icon": "electron build/make-icon.js",
     "dist": "electron-builder --win portable",
     "dist:win": "electron-builder --win portable",
-    "dist:mac": "electron-builder --mac",
+    "dist:mac": "electron-builder --mac -c.productName=Geumoki",
     "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1",
     "test": "node --test"
   },
@@ -43,6 +43,9 @@
       ],
       "category": "public.app-category.utilities",
       "artifactName": "geumoki-${version}-mac.${ext}",
+      "extendInfo": {
+        "CFBundleDisplayName": "금옥이"
+      },
       "identity": "-",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
