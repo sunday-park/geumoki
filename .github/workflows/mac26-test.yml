@@ -1,9 +1,8 @@
 name: mac26-test
 
-# macOS 26 (Tahoe) 진단 — 최종 확정 실험. 수동 실행 전용, 배포와 무관.
-# 확정 사실: 원본 linker 서명 유지 = ALIVE / 서명 교체(재서명·lipo·electron-builder 서명) = DEAD.
-# 이번 런: (X1) 재서명만으로 죽는지 단일변수 증명, (X2) 엔타이틀먼트로 구제 가능한지,
-#          (X3) identity null + arm64 단독 빌드(배포 후보)가 사는지.
+# macOS 26 (Tahoe) 진단 — 헬퍼/프레임워크 범인 색출. 수동 실행 전용, 배포와 무관.
+# 확정: 서명 무관. 순정 껍데기+asar ALIVE, electron-builder 패키징 DEAD.
+# 남은 차이 = Frameworks 내부(헬퍼 앱 rename 등). 전수 diff + 되돌리기 실험.
 on:
   workflow_dispatch:
 
@@ -32,7 +31,7 @@ jobs:
           run_test() {
             local label="$1"; shift
             set +e
-            "$@" > "/tmp/$label.log" 2>&1 &
+            ELECTRON_ENABLE_LOGGING=stderr "$@" --enable-logging=stderr > "/tmp/$label.log" 2>&1 &
             local pid=$!
             sleep 12
             if kill -0 "$pid" 2>/dev/null; then
@@ -41,7 +40,7 @@ jobs:
             else
               local code=0; wait "$pid" 2>/dev/null; code=$?
               echo "RESULT [$label]: DEAD (exit=$code)"
-              tail -20 "/tmp/$label.log" 2>/dev/null
+              echo "--- log ---"; cat "/tmp/$label.log" 2>/dev/null; echo "--- end ---"
             fi
             set -e
             return 0
@@ -49,58 +48,67 @@ jobs:
           EOF
           echo ok
 
-      - name: 순정 껍데기 + asar 준비
-        run: |
-          [ -d node_modules/electron/dist/Electron.app ] || node node_modules/electron/install.js
-          mkdir -p /tmp/stage
-          cp package.json /tmp/stage/
-          cp -R src /tmp/stage/
-          npx @electron/asar pack /tmp/stage /tmp/app.asar
-          make_shell() {
-            rm -rf "$1"
-            cp -R node_modules/electron/dist/Electron.app "$1"
-            rm -f "$1/Contents/Resources/default_app.asar"
-            cp /tmp/app.asar "$1/Contents/Resources/app.asar"
-          }
-          make_shell /tmp/x0.app
-          make_shell /tmp/x1.app
-          make_shell /tmp/x2.app
-          echo done
-
-      - name: 'X0: 대조군 — 손 안 댄 껍데기 (ALIVE 재확인)'
-        run: |
-          source /tmp/run_test.sh
-          run_test x0-pristine "/tmp/x0.app/Contents/MacOS/Electron"
-
-      - name: 'X1: 껍데기를 plain ad-hoc으로 재서명만 함'
-        run: |
-          codesign --force --deep --sign - /tmp/x1.app
-          codesign -dv /tmp/x1.app 2>&1 | grep -E "flags|Identifier"
-          source /tmp/run_test.sh
-          run_test x1-resigned "/tmp/x1.app/Contents/MacOS/Electron"
-
-      - name: 'X2: 껍데기를 runtime+JIT 엔타이틀먼트로 재서명'
-        run: |
-          codesign --force --deep --options runtime --entitlements build/entitlements.mac.plist --sign - /tmp/x2.app
-          codesign -dv /tmp/x2.app 2>&1 | grep -E "flags|Identifier"
-          source /tmp/run_test.sh
-          run_test x2-resigned-jit "/tmp/x2.app/Contents/MacOS/Electron"
-
-      - name: 'X3: 배포 후보 — electron-builder arm64 + identity null (서명 무접촉)'
+      - name: 패키징(candidate) + 순정 껍데기(shell) 준비
         run: |
           npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
-          ditto -x -k dist/geumoki-*-mac.zip /tmp/candidate
-          codesign -dv "/tmp/candidate/금옥이.app" 2>&1 | grep -E "flags|Identifier" || true
-          source /tmp/run_test.sh
-          run_test x3-candidate "/tmp/candidate/금옥이.app/Contents/MacOS/금옥이"
+          ditto -x -k dist/geumoki-*-mac.zip /tmp/cand
+          [ -d node_modules/electron/dist/Electron.app ] || node node_modules/electron/install.js
+          cp -R node_modules/electron/dist/Electron.app /tmp/shell.app
+          rm -f /tmp/shell.app/Contents/Resources/default_app.asar
+          cp "/tmp/cand/금옥이.app/Contents/Resources/app.asar" /tmp/shell.app/Contents/Resources/app.asar
+          echo done
 
-      - name: 배포 후보 아티팩트 업로드
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: geumoki-arm64-unsigned
-          path: dist/*.zip
-          if-no-files-found: ignore
+      - name: 전수 diff (shell vs candidate)
+        run: |
+          echo "=== 파일 목록 차이 ==="
+          diff <(cd /tmp/shell.app && find . | sed 's/Electron/NAME/g' | sort) \
+               <(cd "/tmp/cand/금옥이.app" && find . | sed 's/금옥이/NAME/g' | sort) | head -60 || true
+          echo "=== 내용 다른 파일 (이름 무관 비교 불가한 것 제외) ==="
+          diff -qr /tmp/shell.app "/tmp/cand/금옥이.app" 2>&1 | head -40 || true
+
+      - name: 'Y0: candidate 그대로 (DEAD 재확인 + 치명 로그 수집)'
+        run: |
+          source /tmp/run_test.sh
+          run_test y0-cand "/tmp/cand/금옥이.app/Contents/MacOS/금옥이"
+
+      - name: 'Y1: candidate 의 Frameworks 전체를 순정으로 교체'
+        run: |
+          ditto "/tmp/cand/금옥이.app" /tmp/y1.app
+          rm -rf /tmp/y1.app/Contents/Frameworks
+          cp -R node_modules/electron/dist/Electron.app/Contents/Frameworks /tmp/y1.app/Contents/Frameworks
+          source /tmp/run_test.sh
+          run_test y1-pristine-frameworks "/tmp/y1.app/Contents/MacOS/금옥이"
+
+      - name: 'Y2: candidate 의 헬퍼 앱들만 순정으로 교체 (Electron Framework 는 candidate 것 유지)'
+        run: |
+          ditto "/tmp/cand/금옥이.app" /tmp/y2.app
+          cd /tmp/y2.app/Contents/Frameworks
+          rm -rf "금옥이 Helper.app" "금옥이 Helper (GPU).app" "금옥이 Helper (Renderer).app" "금옥이 Helper (Plugin).app"
+          src="$GITHUB_WORKSPACE/node_modules/electron/dist/Electron.app/Contents/Frameworks"
+          cp -R "$src/Electron Helper.app" .
+          cp -R "$src/Electron Helper (GPU).app" .
+          cp -R "$src/Electron Helper (Renderer).app" .
+          cp -R "$src/Electron Helper (Plugin).app" .
+          source /tmp/run_test.sh
+          run_test y2-pristine-helpers "/tmp/y2.app/Contents/MacOS/금옥이"
+
+      - name: 'Y3: shell 의 헬퍼 번들 폴더명만 한글로 rename (candidate 흉내)'
+        run: |
+          ditto /tmp/shell.app "/tmp/y3.app"
+          cd "/tmp/y3.app/Contents/Frameworks"
+          for t in "" " (GPU)" " (Renderer)" " (Plugin)"; do
+            mv "Electron Helper$t.app" "금옥이 Helper$t.app"
+          done
+          source /tmp/run_test.sh
+          run_test y3-renamed-helper-dirs "/tmp/y3.app/Contents/MacOS/Electron"
+
+      - name: 'Y4: candidate 의 Electron Framework 만 순정으로 교체 (헬퍼는 candidate 것 유지)'
+        run: |
+          ditto "/tmp/cand/금옥이.app" /tmp/y4.app
+          rm -rf "/tmp/y4.app/Contents/Frameworks/Electron Framework.framework"
+          cp -R "$GITHUB_WORKSPACE/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Framework.framework" "/tmp/y4.app/Contents/Frameworks/"
+          source /tmp/run_test.sh
+          run_test y4-pristine-framework-only "/tmp/y4.app/Contents/MacOS/금옥이"
 
       - name: 크래시 리포트 요약
         if: always()
