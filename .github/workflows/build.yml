@@ -36,7 +36,9 @@ jobs:
         run: npm ci
 
       - name: 빌드
-        run: npm run ${{ matrix.script }}
+        # --publish never: electron-builder 가 CI+토큰+태그를 감지하면 Draft 릴리스를
+        # 몰래 만들어 중복 업로드하므로 차단 (정식 릴리스는 아래 softprops 단계가 담당)
+        run: npm run ${{ matrix.script }} -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 맥: 인증서 없이 ad-hoc 서명(identity "-", package.json 참조).
