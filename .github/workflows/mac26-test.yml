@@ -57,6 +57,7 @@ jobs:
 
       - name: 'T1: 순정 Electron 껍데기 + 우리 앱(loose 폴더)'
         run: |
+          [ -d node_modules/electron/dist/Electron.app ] || node node_modules/electron/install.js
           cp -R node_modules/electron/dist/Electron.app /tmp/shell-loose.app
           mkdir /tmp/shell-loose.app/Contents/Resources/app
           cp package.json /tmp/shell-loose.app/Contents/Resources/app/
