@@ -1,8 +1,9 @@
 name: mac26-test
 
-# macOS 26 (Tahoe) 진단 — Electron 버전 가르기. 수동 실행 전용, 배포와 무관.
-# 확정: 헬퍼 앱 번들명이 "Electron Helper*"가 아니면 Electron 43.0.0 이 기동 중 죽는다.
-# 이번 런: 42/41 로 빌드하면 사는지(=43 회귀 확정), 이름 이론 재확인.
+# macOS 26 (Tahoe) 진단 — 최종 해결책 검증. 수동 실행 전용, 배포와 무관.
+# 확정: macOS 26.4 에서 한글 이름 헬퍼(금옥이 Helper*.app)를 찾지 못해 기동 크래시.
+#       "Electron Helper*.app" 폴백이 있으면 생존. Electron 41/42/43 공통.
+# 이번 런: 내부 이름 ASCII(Geumoki) + 표시명 금옥이 빌드가 사는지 최종 확인.
 on:
   workflow_dispatch:
 
@@ -31,7 +32,7 @@ jobs:
           run_test() {
             local label="$1"; shift
             set +e
-            ELECTRON_ENABLE_LOGGING=stderr "$@" --enable-logging=stderr > "/tmp/$label.log" 2>&1 &
+            "$@" > "/tmp/$label.log" 2>&1 &
             local pid=$!
             sleep 12
             if kill -0 "$pid" 2>/dev/null; then
@@ -40,7 +41,7 @@ jobs:
             else
               local code=0; wait "$pid" 2>/dev/null; code=$?
               echo "RESULT [$label]: DEAD (exit=$code)"
-              echo "--- log ---"; cat "/tmp/$label.log" 2>/dev/null; echo "--- end ---"
+              tail -20 "/tmp/$label.log" 2>/dev/null
             fi
             set -e
             return 0
@@ -48,39 +49,29 @@ jobs:
           EOF
           echo ok
 
-      - name: 'Z1: Electron 42 최신으로 빌드 → 실행'
+      - name: 'F1: productName=Geumoki(ASCII) + 표시명 금옥이 빌드'
         run: |
-          npm i -D electron@42 --no-audit --no-fund
-          node -e "console.log('electron', require('electron/package.json').version)"
-          npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
-          rm -rf /tmp/z1 && ditto -x -k dist/geumoki-*-mac.zip /tmp/z1
+          npx electron-builder --mac zip --arm64 --publish never \
+            -c.mac.identity=null \
+            -c.productName=Geumoki \
+            "-c.mac.extendInfo.CFBundleDisplayName=금옥이" \
+            -c.mac.artifactName='geumoki-${version}-mac-arm64.${ext}'
+          ditto -x -k dist/geumoki-*-mac-arm64.zip /tmp/f1
+          ls /tmp/f1
           source /tmp/run_test.sh
-          run_test z1-electron42 "/tmp/z1/금옥이.app/Contents/MacOS/금옥이"
+          run_test f1-ascii-internal "/tmp/f1/Geumoki.app/Contents/MacOS/Geumoki"
 
-      - name: 'Z2: Electron 41 최신으로 빌드 → 실행'
+      - name: 'F2: F1 결과물의 겉 폴더명만 금옥이.app 으로 rename'
         run: |
-          npm i -D electron@41 --no-audit --no-fund
-          node -e "console.log('electron', require('electron/package.json').version)"
-          rm -rf dist
-          npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
-          rm -rf /tmp/z2 && ditto -x -k dist/geumoki-*-mac.zip /tmp/z2
+          ditto /tmp/f1 /tmp/f2
+          mv "/tmp/f2/Geumoki.app" "/tmp/f2/금옥이.app"
           source /tmp/run_test.sh
-          run_test z2-electron41 "/tmp/z2/금옥이.app/Contents/MacOS/금옥이"
+          run_test f2-korean-dir "/tmp/f2/금옥이.app/Contents/MacOS/Geumoki"
 
-      - name: 'Z3: Electron 43 빌드 + 순정 이름 헬퍼를 나란히 추가 (이름 이론 재확인)'
+      - name: 'F3: 표시명 확인 (Info.plist)'
         run: |
-          npm i -D electron@43 --no-audit --no-fund
-          node -e "console.log('electron', require('electron/package.json').version)"
-          rm -rf dist
-          npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
-          rm -rf /tmp/z3 && ditto -x -k dist/geumoki-*-mac.zip /tmp/z3
-          [ -d node_modules/electron/dist/Electron.app ] || node node_modules/electron/install.js
-          src="node_modules/electron/dist/Electron.app/Contents/Frameworks"
-          for t in "" " (GPU)" " (Renderer)" " (Plugin)"; do
-            cp -R "$src/Electron Helper$t.app" "/tmp/z3/금옥이.app/Contents/Frameworks/"
-          done
-          source /tmp/run_test.sh
-          run_test z3-both-helpers "/tmp/z3/금옥이.app/Contents/MacOS/금옥이"
+          plutil -p "/tmp/f1/Geumoki.app/Contents/Info.plist" | grep -E "CFBundleDisplayName|CFBundleName|CFBundleExecutable"
+          ls "/tmp/f1/Geumoki.app/Contents/Frameworks/" | head -8
 
       - name: 크래시 리포트 요약
         if: always()
@@ -97,10 +88,10 @@ jobs:
           PYEOF
           done
 
-      - name: Electron 42 빌드 아티팩트 업로드
+      - name: 빌드 아티팩트 업로드
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: diag-builds
+          name: geumoki-ascii-build
           path: dist/*.zip
           if-no-files-found: ignore
