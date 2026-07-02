@@ -1,8 +1,9 @@
 name: mac26-test
 
-# macOS 26 (Tahoe) 진단 — 이분탐색 매트릭스. 수동 실행 전용, 배포와 무관.
-# 확정 사실: 개발모드 ALIVE / electron-builder 패키징(arm64·universal, 서명 유무 무관) DEAD.
-# 이번 런: 패키징의 어느 요소(asar, 한글 이름, Info.plist, 무결성 키)가 원인인지 가른다.
+# macOS 26 (Tahoe) 진단 — 최종 확정 실험. 수동 실행 전용, 배포와 무관.
+# 확정 사실: 원본 linker 서명 유지 = ALIVE / 서명 교체(재서명·lipo·electron-builder 서명) = DEAD.
+# 이번 런: (X1) 재서명만으로 죽는지 단일변수 증명, (X2) 엔타이틀먼트로 구제 가능한지,
+#          (X3) identity null + arm64 단독 빌드(배포 후보)가 사는지.
 on:
   workflow_dispatch:
 
@@ -48,98 +49,70 @@ jobs:
           EOF
           echo ok
 
-      - name: 베이스라인 패키징 (electron-builder arm64)
-        run: |
-          npx electron-builder --mac zip --arm64 --publish never
-          ditto -x -k dist/geumoki-*-mac.zip pkg
-          source /tmp/run_test.sh
-          run_test pkg-baseline "$PWD/pkg/금옥이.app/Contents/MacOS/금옥이"
-
-      - name: 'T1: 순정 Electron 껍데기 + 우리 앱(loose 폴더)'
+      - name: 순정 껍데기 + asar 준비
         run: |
           [ -d node_modules/electron/dist/Electron.app ] || node node_modules/electron/install.js
-          cp -R node_modules/electron/dist/Electron.app /tmp/shell-loose.app
-          mkdir /tmp/shell-loose.app/Contents/Resources/app
-          cp package.json /tmp/shell-loose.app/Contents/Resources/app/
-          cp -R src /tmp/shell-loose.app/Contents/Resources/app/
-          source /tmp/run_test.sh
-          run_test shell-loose "/tmp/shell-loose.app/Contents/MacOS/Electron"
-
-      - name: 'T2: 순정 껍데기 + app.asar'
-        run: |
           mkdir -p /tmp/stage
           cp package.json /tmp/stage/
           cp -R src /tmp/stage/
           npx @electron/asar pack /tmp/stage /tmp/app.asar
-          cp -R node_modules/electron/dist/Electron.app /tmp/shell-asar.app
-          rm -rf /tmp/shell-asar.app/Contents/Resources/default_app.asar
-          cp /tmp/app.asar /tmp/shell-asar.app/Contents/Resources/app.asar
-          source /tmp/run_test.sh
-          run_test shell-asar "/tmp/shell-asar.app/Contents/MacOS/Electron"
+          make_shell() {
+            rm -rf "$1"
+            cp -R node_modules/electron/dist/Electron.app "$1"
+            rm -f "$1/Contents/Resources/default_app.asar"
+            cp /tmp/app.asar "$1/Contents/Resources/app.asar"
+          }
+          make_shell /tmp/x0.app
+          make_shell /tmp/x1.app
+          make_shell /tmp/x2.app
+          echo done
 
-      - name: 'T3: 순정 껍데기+asar, 번들 폴더명만 한글(금옥이.app)'
+      - name: 'X0: 대조군 — 손 안 댄 껍데기 (ALIVE 재확인)'
         run: |
-          cp -R /tmp/shell-asar.app "/tmp/금옥이.app"
           source /tmp/run_test.sh
-          run_test shell-korean-dir "/tmp/금옥이.app/Contents/MacOS/Electron"
+          run_test x0-pristine "/tmp/x0.app/Contents/MacOS/Electron"
 
-      - name: 'T4: 패키징본에서 무결성 키만 제거 + 재서명'
+      - name: 'X1: 껍데기를 plain ad-hoc으로 재서명만 함'
         run: |
-          ditto pkg /tmp/no-integrity && cd /tmp/no-integrity
-          plutil -remove ElectronAsarIntegrity "금옥이.app/Contents/Info.plist"
-          codesign --force --deep --sign - "금옥이.app"
+          codesign --force --deep --sign - /tmp/x1.app
+          codesign -dv /tmp/x1.app 2>&1 | grep -E "flags|Identifier"
           source /tmp/run_test.sh
-          run_test pkg-no-integrity "/tmp/no-integrity/금옥이.app/Contents/MacOS/금옥이"
+          run_test x1-resigned "/tmp/x1.app/Contents/MacOS/Electron"
 
-      - name: 'T5: 패키징본 Info.plist를 순정 것으로 교체 + 실행파일명 원복 + 재서명'
+      - name: 'X2: 껍데기를 runtime+JIT 엔타이틀먼트로 재서명'
         run: |
-          ditto pkg /tmp/devplist && cd /tmp/devplist
-          cp "$GITHUB_WORKSPACE/node_modules/electron/dist/Electron.app/Contents/Info.plist" "금옥이.app/Contents/Info.plist"
-          mv "금옥이.app/Contents/MacOS/금옥이" "금옥이.app/Contents/MacOS/Electron"
-          codesign --force --deep --sign - "금옥이.app"
+          codesign --force --deep --options runtime --entitlements build/entitlements.mac.plist --sign - /tmp/x2.app
+          codesign -dv /tmp/x2.app 2>&1 | grep -E "flags|Identifier"
           source /tmp/run_test.sh
-          run_test pkg-devplist "/tmp/devplist/금옥이.app/Contents/MacOS/Electron"
+          run_test x2-resigned-jit "/tmp/x2.app/Contents/MacOS/Electron"
 
-      - name: 'T6: 패키징본 실행파일·번들명 ASCII로 변경 + 재서명'
+      - name: 'X3: 배포 후보 — electron-builder arm64 + identity null (서명 무접촉)'
         run: |
-          ditto pkg /tmp/ascii && cd /tmp/ascii
-          mv "금옥이.app" "Geumoki.app"
-          mv "Geumoki.app/Contents/MacOS/금옥이" "Geumoki.app/Contents/MacOS/Geumoki"
-          plutil -replace CFBundleExecutable -string "Geumoki" "Geumoki.app/Contents/Info.plist"
-          plutil -replace CFBundleName -string "Geumoki" "Geumoki.app/Contents/Info.plist"
-          plutil -replace CFBundleDisplayName -string "Geumoki" "Geumoki.app/Contents/Info.plist"
-          codesign --force --deep --sign - "Geumoki.app"
+          npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
+          ditto -x -k dist/geumoki-*-mac.zip /tmp/candidate
+          codesign -dv "/tmp/candidate/금옥이.app" 2>&1 | grep -E "flags|Identifier" || true
           source /tmp/run_test.sh
-          run_test pkg-ascii "/tmp/ascii/Geumoki.app/Contents/MacOS/Geumoki"
+          run_test x3-candidate "/tmp/candidate/금옥이.app/Contents/MacOS/금옥이"
 
-      - name: 크래시 리포트 수집(faulting thread 요약)
-        if: always()
-        run: |
-          mkdir -p crash-reports
-          cp ~/Library/Logs/DiagnosticReports/*.ips crash-reports/ 2>/dev/null || echo "크래시 리포트 없음"
-          for f in crash-reports/*.ips; do
-            [ -e "$f" ] || continue
-            echo "===== $(basename "$f") ====="
-            python3 - "$f" <<'PYEOF'
-          import json,sys
-          lines=open(sys.argv[1],encoding='utf-8',errors='replace').read().splitlines()
-          meta=json.loads(lines[0]); body=json.loads("\n".join(lines[1:]))
-          print("proc:",meta.get("app_name"))
-          print("exception:",body.get("exception",{}).get("type"),body.get("termination",{}).get("indicator"))
-          ft=body.get("faultingThread",0)
-          th=body.get("threads",[{}])[ft]
-          imgs=body.get("usedImages",[])
-          for fr in th.get("frames",[])[:8]:
-              idx=fr.get("imageIndex",-1)
-              img=imgs[idx]["name"] if 0<=idx<len(imgs) else "?"
-              print(f'  {img} +{fr.get("imageOffset")}')
-          PYEOF
-          done
-
-      - name: 크래시 리포트 아티팩트 업로드
+      - name: 배포 후보 아티팩트 업로드
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: crash-reports
-          path: crash-reports/
+          name: geumoki-arm64-unsigned
+          path: dist/*.zip
           if-no-files-found: ignore
+
+      - name: 크래시 리포트 요약
+        if: always()
+        run: |
+          for f in ~/Library/Logs/DiagnosticReports/*.ips; do
+            [ -e "$f" ] || continue
+            echo "===== $(basename "$f") ====="
+            python3 - "$f" <<'PYEOF' || true
+          import json,sys
+          lines=open(sys.argv[1],encoding='utf-8',errors='replace').read().splitlines()
+          body=json.loads("\n".join(lines[1:]))
+          th=body["threads"][body.get("faultingThread",0)]
+          print("proc:",body.get("procName"),"offsets:",[fr.get("imageOffset") for fr in th["frames"][:4]])
+          PYEOF
+          done
