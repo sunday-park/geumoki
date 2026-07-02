@@ -1,8 +1,7 @@
 name: mac26-test
 
-# macOS 26 (Tahoe) 실기 실행 테스트 — 수동 실행 전용.
-# 서명 수정본(새 빌드 아티팩트)과 미서명 v1.0.5(기존 릴리스)를 같은 머신에서 켜서
-# "미서명은 죽고 서명본은 산다"를 확인한다. 배포와 무관, 결과는 로그로만 본다.
+# macOS 26 (Tahoe) 진단 매트릭스 — 수동 실행 전용. 배포와 무관.
+# 무엇이 죽고 무엇이 사는지 갈라서 크래시 원인을 좁힌다.
 on:
   workflow_dispatch:
     inputs:
@@ -11,106 +10,111 @@ on:
         required: true
 
 jobs:
-  launch-test:
+  diag:
     runs-on: macos-26
     steps:
       - name: 환경 확인
-        run: sw_vers && uname -m
+        run: sw_vers && uname -m && echo "---" && system_profiler SPSoftwareDataType | head -8
 
-      - name: 서명본(수정 빌드) 다운로드
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 테스트 함수 준비
+        run: |
+          cat > /tmp/run_test.sh <<'EOF'
+          run_test() {
+            local label="$1"; shift
+            "$@" > "/tmp/$label.log" 2>&1 &
+            local pid=$!
+            sleep 15
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "RESULT [$label]: ALIVE (실행 성공)"
+              kill "$pid" 2>/dev/null || true; sleep 1
+            else
+              wait "$pid" 2>/dev/null; local code=$?
+              echo "RESULT [$label]: DEAD (exit=$code)"
+            fi
+            echo "--- $label stderr/stdout tail ---"
+            tail -30 "/tmp/$label.log" 2>/dev/null || echo "(로그 없음)"
+            echo "-------------------------------"
+          }
+          EOF
+          echo ok
+
+      - name: '테스트 1: 개발 모드 (npx electron ., 패키징 없음)'
+        run: |
+          source /tmp/run_test.sh
+          run_test dev-mode ./node_modules/.bin/electron .
+
+      - name: '테스트 2: 서명본(수정 빌드) 그대로'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh run download "${{ inputs.artifact_run_id }}" --repo "$GITHUB_REPOSITORY" --name geumoki-macos-latest --dir fixed
-
-      - name: 미서명 v1.0.5(기존 릴리스) 다운로드
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download v1.0.5 --repo "$GITHUB_REPOSITORY" --pattern 'geumoki-1.0.5-mac.zip' --dir old
-
-      - name: 압축 해제
-        run: |
           ditto -x -k fixed/geumoki-*-mac.zip fixed-app
-          ditto -x -k old/geumoki-1.0.5-mac.zip old-app
-          ls fixed-app old-app
+          source /tmp/run_test.sh
+          run_test fixed-asis "$PWD/fixed-app/금옥이.app/Contents/MacOS/금옥이"
 
-      - name: 서명 상태 비교
+      - name: '테스트 3: 서명본 + --no-sandbox'
         run: |
-          echo "=== 미서명(기존 v1.0.5) ==="
-          codesign -dv "old-app/금옥이.app" 2>&1 || true
-          echo "=== 서명본(수정 빌드) ==="
-          codesign -dv "fixed-app/금옥이.app" 2>&1 || true
-          codesign --verify --deep --strict "fixed-app/금옥이.app" && echo "서명 검증: OK"
+          source /tmp/run_test.sh
+          run_test fixed-nosandbox "$PWD/fixed-app/금옥이.app/Contents/MacOS/금옥이" --no-sandbox
 
-      - name: 실행 테스트 함수 정의 + 미서명 실행 (죽어야 정상 재현)
+      - name: '테스트 4: hardened runtime 제거 재서명 (plain ad-hoc)'
         run: |
-          run_test() {
-            local app="$1" label="$2"
-            "$app/Contents/MacOS/금옥이" > "/tmp/$label.log" 2>&1 &
-            local pid=$!
-            sleep 15
-            if kill -0 "$pid" 2>/dev/null; then
-              echo "$label: 15초 생존 — 실행 성공"
-              kill "$pid" 2>/dev/null || true
-              return 0
-            else
-              wait "$pid"; local code=$?
-              echo "$label: 죽음 (exit=$code)"
-              tail -20 "/tmp/$label.log" || true
-              return 1
-            fi
-          }
-          echo "run_test 정의 완료"
-          if run_test "$PWD/old-app/금옥이.app" old; then
-            echo "OLD_RESULT=alive" >> "$GITHUB_ENV"
-          else
-            echo "OLD_RESULT=crashed" >> "$GITHUB_ENV"
-          fi
+          ditto fixed-app plain-app
+          codesign --remove-signature "plain-app/금옥이.app" || true
+          codesign --force --deep --sign - "plain-app/금옥이.app"
+          codesign -dv "plain-app/금옥이.app" 2>&1 | grep -E "flags|Signature|Identifier"
+          source /tmp/run_test.sh
+          run_test plain-adhoc "$PWD/plain-app/금옥이.app/Contents/MacOS/금옥이"
 
-      - name: 서명본 실행 (살아야 성공)
+      - name: '테스트 5: 통제군 — VS Code (Developer ID 서명+공증 Electron 앱)'
         run: |
-          run_test() {
-            local app="$1" label="$2"
-            "$app/Contents/MacOS/금옥이" > "/tmp/$label.log" 2>&1 &
-            local pid=$!
-            sleep 15
-            if kill -0 "$pid" 2>/dev/null; then
-              echo "$label: 15초 생존 — 실행 성공"
-              kill "$pid" 2>/dev/null || true
-              return 0
-            else
-              wait "$pid"; local code=$?
-              echo "$label: 죽음 (exit=$code)"
-              tail -20 "/tmp/$label.log" || true
-              return 1
-            fi
-          }
-          if run_test "$PWD/fixed-app/금옥이.app" fixed; then
-            echo "FIXED_RESULT=alive" >> "$GITHUB_ENV"
-          else
-            echo "FIXED_RESULT=crashed" >> "$GITHUB_ENV"
-            exit 1
-          fi
+          curl -sL "https://update.code.visualstudio.com/latest/darwin-arm64/stable" -o /tmp/vscode.zip
+          ditto -x -k /tmp/vscode.zip /tmp/vscode
+          source /tmp/run_test.sh
+          run_test vscode-control "/tmp/vscode/Visual Studio Code.app/Contents/MacOS/Electron"
 
-      - name: 크래시 리포트 수집(있으면)
+      - name: 크래시 리포트 전체 수집
         if: always()
         run: |
-          ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null || true
-          for f in ~/Library/Logs/DiagnosticReports/금옥이*.ips; do
+          mkdir -p crash-reports
+          cp ~/Library/Logs/DiagnosticReports/*.ips crash-reports/ 2>/dev/null || echo "크래시 리포트 없음"
+          ls -la crash-reports/
+          for f in crash-reports/*.ips; do
             [ -e "$f" ] || continue
-            echo "=== $f ==="
-            head -40 "$f"
+            echo "===== $f (요약) ====="
+            python3 - "$f" <<'PYEOF'
+          import json,sys
+          lines=open(sys.argv[1],encoding='utf-8',errors='replace').read().splitlines()
+          meta=json.loads(lines[0]); body=json.loads("\n".join(lines[1:]))
+          print("proc:",meta.get("app_name"),"| time:",meta.get("timestamp"))
+          print("exception:",body.get("exception"))
+          print("termination:",body.get("termination"))
+          ft=body.get("faultingThread",0)
+          th=body.get("threads",[{}])[ft]
+          imgs=body.get("usedImages",[])
+          for fr in th.get("frames",[])[:12]:
+              idx=fr.get("imageIndex",-1)
+              img=imgs[idx]["name"] if 0<=idx<len(imgs) else "?"
+              print(f'  {img} + {fr.get("imageOffset")}  {fr.get("symbol","")}+{fr.get("symbolLocation","")}')
+          PYEOF
           done
 
-      - name: 최종 판정
-        run: |
-          echo "미서명 v1.0.5: $OLD_RESULT / 서명본: $FIXED_RESULT"
-          if [ "$FIXED_RESULT" = "alive" ]; then
-            echo "✅ 서명본은 macOS 26에서 정상 실행"
-          fi
-          if [ "$OLD_RESULT" = "crashed" ]; then
-            echo "✅ 미서명 크래시도 재현됨 — 원인 진단 확정"
-          else
-            echo "⚠️ 미서명본이 러너에서는 안 죽음 — 진단은 정황 증거 기반(친구 맥과 환경 차이 가능)"
-          fi
+      - name: 크래시 리포트 아티팩트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports
+          path: crash-reports/
+          if-no-files-found: ignore
