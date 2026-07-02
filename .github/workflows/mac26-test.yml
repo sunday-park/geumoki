@@ -1,8 +1,8 @@
 name: mac26-test
 
-# macOS 26 (Tahoe) 진단 — 헬퍼/프레임워크 범인 색출. 수동 실행 전용, 배포와 무관.
-# 확정: 서명 무관. 순정 껍데기+asar ALIVE, electron-builder 패키징 DEAD.
-# 남은 차이 = Frameworks 내부(헬퍼 앱 rename 등). 전수 diff + 되돌리기 실험.
+# macOS 26 (Tahoe) 진단 — Electron 버전 가르기. 수동 실행 전용, 배포와 무관.
+# 확정: 헬퍼 앱 번들명이 "Electron Helper*"가 아니면 Electron 43.0.0 이 기동 중 죽는다.
+# 이번 런: 42/41 로 빌드하면 사는지(=43 회귀 확정), 이름 이론 재확인.
 on:
   workflow_dispatch:
 
@@ -48,67 +48,39 @@ jobs:
           EOF
           echo ok
 
-      - name: 패키징(candidate) + 순정 껍데기(shell) 준비
+      - name: 'Z1: Electron 42 최신으로 빌드 → 실행'
         run: |
+          npm i -D electron@42 --no-audit --no-fund
+          node -e "console.log('electron', require('electron/package.json').version)"
           npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
-          ditto -x -k dist/geumoki-*-mac.zip /tmp/cand
+          rm -rf /tmp/z1 && ditto -x -k dist/geumoki-*-mac.zip /tmp/z1
+          source /tmp/run_test.sh
+          run_test z1-electron42 "/tmp/z1/금옥이.app/Contents/MacOS/금옥이"
+
+      - name: 'Z2: Electron 41 최신으로 빌드 → 실행'
+        run: |
+          npm i -D electron@41 --no-audit --no-fund
+          node -e "console.log('electron', require('electron/package.json').version)"
+          rm -rf dist
+          npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
+          rm -rf /tmp/z2 && ditto -x -k dist/geumoki-*-mac.zip /tmp/z2
+          source /tmp/run_test.sh
+          run_test z2-electron41 "/tmp/z2/금옥이.app/Contents/MacOS/금옥이"
+
+      - name: 'Z3: Electron 43 빌드 + 순정 이름 헬퍼를 나란히 추가 (이름 이론 재확인)'
+        run: |
+          npm i -D electron@43 --no-audit --no-fund
+          node -e "console.log('electron', require('electron/package.json').version)"
+          rm -rf dist
+          npx electron-builder --mac zip --arm64 --publish never -c.mac.identity=null
+          rm -rf /tmp/z3 && ditto -x -k dist/geumoki-*-mac.zip /tmp/z3
           [ -d node_modules/electron/dist/Electron.app ] || node node_modules/electron/install.js
-          cp -R node_modules/electron/dist/Electron.app /tmp/shell.app
-          rm -f /tmp/shell.app/Contents/Resources/default_app.asar
-          cp "/tmp/cand/금옥이.app/Contents/Resources/app.asar" /tmp/shell.app/Contents/Resources/app.asar
-          echo done
-
-      - name: 전수 diff (shell vs candidate)
-        run: |
-          echo "=== 파일 목록 차이 ==="
-          diff <(cd /tmp/shell.app && find . | sed 's/Electron/NAME/g' | sort) \
-               <(cd "/tmp/cand/금옥이.app" && find . | sed 's/금옥이/NAME/g' | sort) | head -60 || true
-          echo "=== 내용 다른 파일 (이름 무관 비교 불가한 것 제외) ==="
-          diff -qr /tmp/shell.app "/tmp/cand/금옥이.app" 2>&1 | head -40 || true
-
-      - name: 'Y0: candidate 그대로 (DEAD 재확인 + 치명 로그 수집)'
-        run: |
-          source /tmp/run_test.sh
-          run_test y0-cand "/tmp/cand/금옥이.app/Contents/MacOS/금옥이"
-
-      - name: 'Y1: candidate 의 Frameworks 전체를 순정으로 교체'
-        run: |
-          ditto "/tmp/cand/금옥이.app" /tmp/y1.app
-          rm -rf /tmp/y1.app/Contents/Frameworks
-          cp -R node_modules/electron/dist/Electron.app/Contents/Frameworks /tmp/y1.app/Contents/Frameworks
-          source /tmp/run_test.sh
-          run_test y1-pristine-frameworks "/tmp/y1.app/Contents/MacOS/금옥이"
-
-      - name: 'Y2: candidate 의 헬퍼 앱들만 순정으로 교체 (Electron Framework 는 candidate 것 유지)'
-        run: |
-          ditto "/tmp/cand/금옥이.app" /tmp/y2.app
-          cd /tmp/y2.app/Contents/Frameworks
-          rm -rf "금옥이 Helper.app" "금옥이 Helper (GPU).app" "금옥이 Helper (Renderer).app" "금옥이 Helper (Plugin).app"
-          src="$GITHUB_WORKSPACE/node_modules/electron/dist/Electron.app/Contents/Frameworks"
-          cp -R "$src/Electron Helper.app" .
-          cp -R "$src/Electron Helper (GPU).app" .
-          cp -R "$src/Electron Helper (Renderer).app" .
-          cp -R "$src/Electron Helper (Plugin).app" .
-          source /tmp/run_test.sh
-          run_test y2-pristine-helpers "/tmp/y2.app/Contents/MacOS/금옥이"
-
-      - name: 'Y3: shell 의 헬퍼 번들 폴더명만 한글로 rename (candidate 흉내)'
-        run: |
-          ditto /tmp/shell.app "/tmp/y3.app"
-          cd "/tmp/y3.app/Contents/Frameworks"
+          src="node_modules/electron/dist/Electron.app/Contents/Frameworks"
           for t in "" " (GPU)" " (Renderer)" " (Plugin)"; do
-            mv "Electron Helper$t.app" "금옥이 Helper$t.app"
+            cp -R "$src/Electron Helper$t.app" "/tmp/z3/금옥이.app/Contents/Frameworks/"
           done
           source /tmp/run_test.sh
-          run_test y3-renamed-helper-dirs "/tmp/y3.app/Contents/MacOS/Electron"
-
-      - name: 'Y4: candidate 의 Electron Framework 만 순정으로 교체 (헬퍼는 candidate 것 유지)'
-        run: |
-          ditto "/tmp/cand/금옥이.app" /tmp/y4.app
-          rm -rf "/tmp/y4.app/Contents/Frameworks/Electron Framework.framework"
-          cp -R "$GITHUB_WORKSPACE/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Framework.framework" "/tmp/y4.app/Contents/Frameworks/"
-          source /tmp/run_test.sh
-          run_test y4-pristine-framework-only "/tmp/y4.app/Contents/MacOS/금옥이"
+          run_test z3-both-helpers "/tmp/z3/금옥이.app/Contents/MacOS/금옥이"
 
       - name: 크래시 리포트 요약
         if: always()
@@ -124,3 +96,11 @@ jobs:
           print("proc:",body.get("procName"),"offsets:",[fr.get("imageOffset") for fr in th["frames"][:4]])
           PYEOF
           done
+
+      - name: Electron 42 빌드 아티팩트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-builds
+          path: dist/*.zip
+          if-no-files-found: ignore
