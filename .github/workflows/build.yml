@@ -39,8 +39,8 @@ jobs:
         run: npm run ${{ matrix.script }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 맥: 서명 인증서가 없으므로 자동 서명 탐색을 끈다(미서명 빌드).
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # 맥: 인증서 없이 ad-hoc 서명(identity "-", package.json 참조).
+          # macOS 26부터 미서명 Electron 앱은 실행 즉시 크래시하므로 서명을 생략하면 안 된다.
 
       # 로컬 빌드는 한글명(금옥이.exe)을 쓰지만, GitHub Release 는 한글 자산명을
       # default.exe 로 바꿔버린다. CI 릴리스용으로만 ASCII 이름으로 정리한다.

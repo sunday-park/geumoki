@@ -43,7 +43,10 @@
       ],
       "category": "public.app-category.utilities",
       "artifactName": "geumoki-${version}-mac.${ext}",
-      "identity": null
+      "identity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     }
   }
 }
