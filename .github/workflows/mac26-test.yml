@@ -1,0 +1,116 @@
+name: mac26-test
+
+# macOS 26 (Tahoe) 실기 실행 테스트 — 수동 실행 전용.
+# 서명 수정본(새 빌드 아티팩트)과 미서명 v1.0.5(기존 릴리스)를 같은 머신에서 켜서
+# "미서명은 죽고 서명본은 산다"를 확인한다. 배포와 무관, 결과는 로그로만 본다.
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: '서명본 zip이 들어있는 build 워크플로 run id'
+        required: true
+
+jobs:
+  launch-test:
+    runs-on: macos-26
+    steps:
+      - name: 환경 확인
+        run: sw_vers && uname -m
+
+      - name: 서명본(수정 빌드) 다운로드
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run download "${{ inputs.artifact_run_id }}" --repo "$GITHUB_REPOSITORY" --name geumoki-macos-latest --dir fixed
+
+      - name: 미서명 v1.0.5(기존 릴리스) 다운로드
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download v1.0.5 --repo "$GITHUB_REPOSITORY" --pattern 'geumoki-1.0.5-mac.zip' --dir old
+
+      - name: 압축 해제
+        run: |
+          ditto -x -k fixed/geumoki-*-mac.zip fixed-app
+          ditto -x -k old/geumoki-1.0.5-mac.zip old-app
+          ls fixed-app old-app
+
+      - name: 서명 상태 비교
+        run: |
+          echo "=== 미서명(기존 v1.0.5) ==="
+          codesign -dv "old-app/금옥이.app" 2>&1 || true
+          echo "=== 서명본(수정 빌드) ==="
+          codesign -dv "fixed-app/금옥이.app" 2>&1 || true
+          codesign --verify --deep --strict "fixed-app/금옥이.app" && echo "서명 검증: OK"
+
+      - name: 실행 테스트 함수 정의 + 미서명 실행 (죽어야 정상 재현)
+        run: |
+          run_test() {
+            local app="$1" label="$2"
+            "$app/Contents/MacOS/금옥이" > "/tmp/$label.log" 2>&1 &
+            local pid=$!
+            sleep 15
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "$label: 15초 생존 — 실행 성공"
+              kill "$pid" 2>/dev/null || true
+              return 0
+            else
+              wait "$pid"; local code=$?
+              echo "$label: 죽음 (exit=$code)"
+              tail -20 "/tmp/$label.log" || true
+              return 1
+            fi
+          }
+          echo "run_test 정의 완료"
+          if run_test "$PWD/old-app/금옥이.app" old; then
+            echo "OLD_RESULT=alive" >> "$GITHUB_ENV"
+          else
+            echo "OLD_RESULT=crashed" >> "$GITHUB_ENV"
+          fi
+
+      - name: 서명본 실행 (살아야 성공)
+        run: |
+          run_test() {
+            local app="$1" label="$2"
+            "$app/Contents/MacOS/금옥이" > "/tmp/$label.log" 2>&1 &
+            local pid=$!
+            sleep 15
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "$label: 15초 생존 — 실행 성공"
+              kill "$pid" 2>/dev/null || true
+              return 0
+            else
+              wait "$pid"; local code=$?
+              echo "$label: 죽음 (exit=$code)"
+              tail -20 "/tmp/$label.log" || true
+              return 1
+            fi
+          }
+          if run_test "$PWD/fixed-app/금옥이.app" fixed; then
+            echo "FIXED_RESULT=alive" >> "$GITHUB_ENV"
+          else
+            echo "FIXED_RESULT=crashed" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
+      - name: 크래시 리포트 수집(있으면)
+        if: always()
+        run: |
+          ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null || true
+          for f in ~/Library/Logs/DiagnosticReports/금옥이*.ips; do
+            [ -e "$f" ] || continue
+            echo "=== $f ==="
+            head -40 "$f"
+          done
+
+      - name: 최종 판정
+        run: |
+          echo "미서명 v1.0.5: $OLD_RESULT / 서명본: $FIXED_RESULT"
+          if [ "$FIXED_RESULT" = "alive" ]; then
+            echo "✅ 서명본은 macOS 26에서 정상 실행"
+          fi
+          if [ "$OLD_RESULT" = "crashed" ]; then
+            echo "✅ 미서명 크래시도 재현됨 — 원인 진단 확정"
+          else
+            echo "⚠️ 미서명본이 러너에서는 안 죽음 — 진단은 정황 증거 기반(친구 맥과 환경 차이 가능)"
+          fi
