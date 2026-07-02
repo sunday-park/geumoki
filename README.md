@@ -81,8 +81,11 @@ npm run uninstall-hooks
 
 > <sub>내려받기 → **[Releases](https://github.com/sunday-park/geumoki/releases)** (윈도우 exe · 맥 dmg/zip). 아래는 **첫 빌드(v1.0.0) 이후** 추가·개선분만.</sub>
 >
-> <sub>**v1.0.5 (2026-07-01) · 최신**</sub><br>
-> <sub>Electron 43 업그레이드 — 최신 맥(Apple M5·macOS 26) 실행 크래시 해결</sub>
+> <sub>**v1.0.6 (2026-07-02) · 최신**</sub><br>
+> <sub>맥(macOS 26) 실행 즉시 꺼짐 진짜 해결 — 원인은 한글 이름 헬퍼 앱을 macOS 26이 못 찾는 것. 맥 앱 내부명만 ASCII(Geumoki)로 바꾸고 화면 표시명은 금옥이 유지</sub>
+>
+> <sub>**v1.0.5 (2026-07-01)**</sub><br>
+> <sub>Electron 43 업그레이드 (맥 크래시 해결 시도였으나 원인이 아니었음 → v1.0.6에서 해결)</sub>
 >
 > <sub>**v1.0.4 (2026-07-01)**</sub><br>
 > <sub>던지면 탱탱볼처럼 미끄러지며 튕김 · 높이 들어올리면 '높다아' 대사</sub>
