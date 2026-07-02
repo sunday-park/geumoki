@@ -1,4 +1,4 @@
-# 금옥이 릴리스 자동화
+﻿# 금옥이 릴리스 자동화
 # package.json 버전을 올리고, 커밋·태그·push 해서 GitHub Actions의 윈도우/맥 빌드를 트리거한다.
 # (빌드가 끝나면 Releases 페이지에 exe / dmg / zip 이 자동으로 올라간다.)
 #
